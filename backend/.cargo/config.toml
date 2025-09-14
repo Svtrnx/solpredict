@@ -1,0 +1,7 @@
+[build]
+rustflags = ["--cfg", "reqwest_unstable"] 
+
+[env]
+AWS_LC_SYS_CMAKE = { value = "C:\\Program Files\\CMake\\bin\\cmake.exe" }
+AWS_LC_SYS_NO_ASM = "1"
+PATH = { value = "C:\\Program Files\\CMake\\bin;C:\\Program Files\\NASM;{PATH}", force = true }

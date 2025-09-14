@@ -1,0 +1,9 @@
+export const ANIMATION_DURATIONS = {
+  FAST: 150,
+  NORMAL: 300,
+  SLOW: 500,
+  LOADING_DELAY: 1500,
+} as const
+
+export const TOAST_DURATION = 2000
+export const COPY_FEEDBACK_DURATION = 2000

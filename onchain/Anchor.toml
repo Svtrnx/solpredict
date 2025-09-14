@@ -1,0 +1,12 @@
+[features]
+seeds = true
+
+[programs.devnet]
+prediction_market = "HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ"
+
+[provider]
+cluster = "devnet"
+wallet  = "~/.config/solana/id.json"
+
+[build]
+rust = true

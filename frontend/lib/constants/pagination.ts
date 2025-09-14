@@ -1,0 +1,5 @@
+export const PAGINATION_DEFAULTS = {
+  ITEMS_PER_PAGE: 5,
+  MARKETS_PER_PAGE: 15,
+  LEADERBOARD_PER_PAGE: 20,
+} as const

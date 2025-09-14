@@ -1,0 +1,67 @@
+[package]
+name = "solpredict"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tower-http = { version = "0.6.6", features = [
+	"trace",
+	"cors",
+	"timeout",
+	"compression-br",
+] }
+axum = { version = "0.8.4", features = ["http2", "macros", "ws", "multipart"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["full"] }
+uuid = { version = "1.18.0", features = ["v4"] }
+tower_governor = "0.8.0"
+tracing = "0.1.41"
+anyhow = "1.0.99"
+config = "0.15.14"
+dotenvy = "0.15.7"
+thiserror = "2.0.16"
+time = { version = "0.3.43", features = ["serde"] }
+ed25519-dalek = "2.2.0"
+siws = "0.0.3"
+cookie = "0.18.1"
+jsonwebtoken = "9.3.1"
+bs58 = "0.5.1"
+axum-extra = { version = "0.10.1", features = ["cookie"] }
+impit = { git = "https://github.com/apify/impit.git", branch = "master" }
+serde_json = "1.0.143"
+regex = "1.11.2"
+validator = { version = "0.20.0", features = ["derive"] }
+openssl = { version = "0.10", features = ["vendored"] }
+shellexpand = "3.1.1"
+
+# Anchor client
+anchor-client = "0.31.1"
+
+prediction_market_program = { path = "../onchain/programs/prediction_market", package = "prediction_market", features = [
+	"no-entrypoint",
+] }
+tower = "0.5.2"
+sqlx = { version = "0.8.6", features = [
+	"runtime-tokio-rustls",
+	"postgres",
+	"macros",
+	"uuid",
+	"time",
+	"rust_decimal",
+] }
+rust_decimal = "1.37.2"
+spl-associated-token-account = "7.0.0"
+spl-token = "8.0.0"
+hex = "0.4.3"
+base64 = "0.22.1"
+bincode = { version = "2.0.1", features = ["serde"] }
+solana-transaction = "3.0.1"
+
+[patch.crates-io]
+rustls = { git = "https://github.com/apify/rustls.git" }
+h2 = { git = "https://github.com/apify/h2.git" }
+
+[lib]
+name = "solpredict"
+path = "src/lib.rs"
