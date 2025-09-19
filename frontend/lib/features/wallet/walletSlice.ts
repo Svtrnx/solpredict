@@ -4,7 +4,7 @@ export interface WalletState {
   isConnected: boolean
   isAuthorized: boolean
   address: string | null
-  balance: string | null
+  balance: number | null
   publicKey: string | null
   isConnecting: boolean
   error: string | null
@@ -16,7 +16,7 @@ const initialState: WalletState = {
   address: null,
   balance: null,
   publicKey: null,
-  isConnecting: false,
+  isConnecting: true,
   error: null,
 }
 
@@ -33,11 +33,11 @@ export const walletSlice = createSlice({
       action: PayloadAction<{
         address: string
         publicKey: string
-        balance?: string
+        balance?: number
       }>,
     ) => {
-      state.isConnected = true
-      state.isAuthorized = true
+      // state.isConnected = true
+      // state.isAuthorized = true
       state.address = action.payload.address
       state.publicKey = action.payload.publicKey
       if (action.payload.balance !== undefined) {
@@ -46,11 +46,17 @@ export const walletSlice = createSlice({
       state.isConnecting = false
       state.error = null
     },
+    setAuthorized: (state, action: PayloadAction<boolean>) => {
+      state.isAuthorized = action.payload
+    },
+    setConnecting: (state, action: PayloadAction<boolean>) => {
+      state.isConnecting = action.payload
+    },
     connectWalletFailure: (state, action: PayloadAction<string>) => {
       state.isConnecting = false
       state.error = action.payload
     },
-    updateBalance: (state, action: PayloadAction<string>) => {
+    updateBalance: (state, action: PayloadAction<number>) => {
       state.balance = action.payload
     },
     disconnectWallet: (state) => {
@@ -75,6 +81,8 @@ export const {
   disconnectWallet,
   updateBalance,
   clearError,
+  setConnecting,
+  setAuthorized
 } = walletSlice.actions
 
 export default walletSlice.reducer

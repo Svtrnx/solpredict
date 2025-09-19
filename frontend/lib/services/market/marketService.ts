@@ -1,5 +1,7 @@
 import axios from "axios";
+
 import { CreateMarketFormData } from "@/lib/types";
+import { getMarket } from "@/lib/types";
 
 type RawCreateResp = {
 	ok: boolean;
@@ -17,8 +19,13 @@ export type CreateMarketResponse = {
 	message: string;
 };
 
-export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse>
-{
+interface MarketResponse {
+  ok: boolean;
+  items: getMarket[];
+  nextCursor?: string | null;
+}
+
+export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse> {
 	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
 		formData,
 		{ withCredentials: true, headers: { "Content-Type": "application/json" } }
@@ -46,4 +53,18 @@ export async function confirmMarket(
 		},
 		{ withCredentials: true, headers: { "Content-Type": "application/json" } }
 	);
+}
+
+
+export async function getMarketsList(): Promise<MarketResponse> {
+	try {
+		const data = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
+			{ withCredentials: true }
+		);
+		const marketsData = await data.data as { ok: boolean; items: getMarket[]; nextCursor?: string };
+		return marketsData;
+	} catch (error: any) {
+		console.error("Failed to get /markets", error);
+		return { "ok": false, "items": [], "nextCursor": null };
+	}
 }

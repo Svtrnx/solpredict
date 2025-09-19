@@ -10,17 +10,17 @@ import { Badge } from "@/components/ui/badge"
 export type Bet = {
   id: string
   question: string
-  side: "YES" | "NO"
+  side: "yes" | "no"
   amount: number
   currentPrice?: number
   entryPrice?: number
-  pnl: string
+  pnl: number
   pnlAmount?: string
   timeLeft?: string
   status?: "winning" | "losing"
   trend?: "up" | "down"
-  result?: "WON" | "LOST"
-  payout?: string
+  result?: "won" | "lost"
+  payout?: number
   resolvedDate?: string
 }
 
@@ -39,9 +39,9 @@ export function HistoryBetsTab({ historyBets }: HistoryBetsTabProps) {
                 <h3 className="font-semibold mb-2">{bet.question}</h3>
                 <div className="flex items-center space-x-2">
                   <Badge
-                    variant={bet.side === "YES" ? "secondary" : "destructive"}
+                    variant={bet.side === "yes" ? "secondary" : "destructive"}
                     className={
-                      bet.side === "YES" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : ""
+                      bet.side === "no" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : ""
                     }
                   >
                     {bet.side}
@@ -54,14 +54,17 @@ export function HistoryBetsTab({ historyBets }: HistoryBetsTabProps) {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Result</span>
                   <Badge
-                    variant={bet.result === "WON" ? "secondary" : "destructive"}
+                    // variant={bet.result === "WON" ? "secondary" : "destructive"}
+                    variant={bet.result ? "secondary" : "destructive"}
                     className={
-                      bet.result === "WON"
+                      // bet.result === "WON"
+                      bet.result
                         ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                         : "bg-rose-500/20 text-rose-400 border-rose-500/30"
                     }
                   >
-                    {bet.result === "WON" ? (
+                    {/* {bet.result === "WON" ? ( */}
+                    {bet.result ? (
                       <TrendingUp className="w-3 h-3 mr-1" />
                     ) : (
                       <TrendingDown className="w-3 h-3 mr-1" />
@@ -76,7 +79,7 @@ export function HistoryBetsTab({ historyBets }: HistoryBetsTabProps) {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">P&L</span>
                   <span
-                    className={`font-semibold ${bet.pnl.startsWith("+") ? "text-emerald-400" : "text-rose-400"}`}
+                    className={`font-semibold ${bet.pnl ? "text-emerald-400" : "text-rose-400"}`}
                   >
                     {bet.pnl}
                   </span>

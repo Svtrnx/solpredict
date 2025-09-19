@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { TrendingUp, Trophy, Plus, BarChart3, ChevronDown } from "lucide-react"
 import { WalletConnectButton } from "./wallet-connect-button"
 import { useAppSelector } from "@/lib/hooks"
+import Image from "next/image";
 
 export function Navbar() {
   const pathname = usePathname()
@@ -23,29 +24,32 @@ export function Navbar() {
       <div className="bg-black/20 backdrop-blur-xl border border-white/5 rounded-2xl px-6 py-3 shadow-2xl shadow-purple-500/20">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 p-0.5">
-              <div className="h-full w-full rounded-lg bg-black flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-white" />
-              </div>
-            </div>
+          <div className="relative h-10 w-10">
+            <Image
+              src="/images/solpredict.png"
+              alt="SolPredict Logo"
+              width={35}
+              height={35}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
+            />
+          </div>
             <span className="text-xl font-bold text-white">SolPredict</span>
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
             {navItems.map((item) => {
-              const Icon = item.icon
               const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
 
               return (
                 <Link key={item.href} href={item.href}>
                   <Button
                     variant="ghost"
-                    className={`relative px-4 py-2 text-sm font-medium transition-all duration-200 bg-transparent hover:bg-white/10 rounded-lg ${
+                    className={`relative cursor-pointer px-4 py-2 text-sm font-medium transition-all duration-200 bg-transparent hover:bg-white/10 rounded-lg ${
                       isActive ? "text-white bg-white/10" : "text-gray-300 hover:text-white"
                     }`}
                   >
                     {item.label}
-                    {item.label === "Markets" && <ChevronDown className="ml-1 h-3 w-3" />}
+                    {/* {item.label === "Markets" && <ChevronDown className="ml-1 h-3 w-3" />} */}
                   </Button>
                 </Link>
               )

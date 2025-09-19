@@ -27,7 +27,7 @@ export function WalletBridge() {
     try {
       const lamports = await connection.getBalance(publicKey, "confirmed")
       const sol = (lamports / LAMPORTS_PER_SOL).toFixed(4)
-      dispatch(updateBalance(sol))
+      dispatch(updateBalance(Number(sol)))
     } catch (e: any) {
       dispatch(connectWalletFailure(e?.message ?? "Failed to fetch balance"))
     }

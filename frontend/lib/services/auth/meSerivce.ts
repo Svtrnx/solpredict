@@ -1,8 +1,7 @@
 import axios from "axios"
 import type { Me } from "@/lib/types/auth";
 
-export async function getMe(): Promise<Me | null>
-{
+export async function getMe(): Promise<Me | null> {
 	try {
 		const { data } = await axios.get<{ ok: boolean; user: Me }>(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`,
 			{ withCredentials: true }
@@ -15,7 +14,7 @@ export async function getMe(): Promise<Me | null>
 		return null;
 	} catch (error: any)
 	{
-		console.error("Failed to get /auth/me:", error);
+		console.error("Failed to get /auth/me", error);
 		return null;
 	}
 }

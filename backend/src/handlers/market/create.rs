@@ -91,9 +91,6 @@ fn validate_market_fields(req: &CreateMarketRequest) -> Result<(), ValidationErr
             if req.threshold.is_none() {
                 return Err(ValidationError::new("threshold_required"));
             }
-            if matches!(req.comparator, Comparator::Empty | Comparator::Eq) {
-                return Err(ValidationError::new("comparator_not_supported"));
-            }
         }
         MarketType::PriceRange => {
             let (Some(lo), Some(hi)) = (req.lower_bound, req.upper_bound) else {
@@ -188,7 +185,7 @@ fn resolve_price_feed_account_from_hex(feed_id_hex: &str) -> anyhow::Result<Pubk
     Ok(price_account)
 }
 
-// Convert USD float -> integer with 1e6 precision
+// Convert USD float -> int with 1e6 precision
 fn usd_to_1e6(x: f64) -> i64 {
     (x * 1_000_000f64).round() as i64
 }
@@ -211,10 +208,10 @@ pub async fn create_market(
     headers: HeaderMap,
     Json(req): Json<CreateMarketRequest>,
 ) -> Result<(StatusCode, Json<CreateMarketResponse>), AppError> {
-    // 0) Authorization: extract user wallet from cookie
+    // Authorization: extract user wallet from cookie
     let user_pubkey = current_user_pubkey(&headers, &state.jwt_secret)?;
 
-    // 1) Validate request
+    // Validate request
     req.validate()?;
     if req.end_date <= OffsetDateTime::now_utc() + Duration::minutes(10) {
         return Err(AppError::bad_request(
@@ -222,7 +219,7 @@ pub async fn create_market(
         ));
     }
 
-    // 2) Map request into on-chain formats
+    // Map request into on-chain formats
     let market_type_onchain = match req.market_type {
         MarketType::PriceThreshold => onchain::MarketType::PriceThreshold,
         MarketType::PriceRange => onchain::MarketType::PriceRange,
@@ -247,11 +244,11 @@ pub async fn create_market(
         }
     };
 
-    // 3) Resolve Pyth price account
+    // Resolve Pyth price account
     let price_feed_pubkey: Pubkey = resolve_price_feed_account_from_hex(&req.feed_id)
         .map_err(|e| AppError::bad_request(&format!("Cannot resolve price account: {e}")))?;
 
-    // 4) Build transaction (create + seed market)
+    // Build transaction (create + seed market)
     let ctx = state.anchor.clone();
     let end_ts = req.end_date.unix_timestamp();
     let amount_tokens: u64 = (req.initial_liquidity * 1_000_000.0).round() as u64;
@@ -281,7 +278,7 @@ pub async fn create_market(
     .await
     .map_err(|e| AppError::Other(anyhow::anyhow!("Join error: {e}")))??;
 
-    // 5) Derive market PDA (based on user + feed + end_ts)
+    // Derive market PDA (based on user + feed + end_ts)
     let (market_pda, _) = Pubkey::find_program_address(
         &[
             b"market",
@@ -292,7 +289,7 @@ pub async fn create_market(
         &onchain::ID,
     );
 
-    // 6) Do not insert into DB here — wait for confirmation endpoint
+    // Do not insert into DB here — wait for confirmation endpoint
     Ok((
         StatusCode::CREATED,
         Json(CreateMarketResponse {

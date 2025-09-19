@@ -56,3 +56,14 @@ export type CreateMarketFormData = {
   upperBound: number
   initialSide: string
 }
+
+export interface getMarket {
+  id: string | number
+  title: string | ""
+  category: string
+  totalVolume: number
+  participants: number
+  yesPrice: number
+  noPrice: number
+  endDate: string
+}

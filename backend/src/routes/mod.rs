@@ -35,16 +35,20 @@ pub fn build(state: SharedState) -> Router {
     let public_v1 = Router::new()
         .route("/auth/nonce", get(handlers::siws::nonce::get_nonce))
         .route("/auth/verify", post(handlers::siws::verify::verify))
-        .route("/auth/me", get(handlers::me::me));
-
+        .route("/profile/{wallet}", get(handlers::profile::wallet_overview_public))
+        .route("/auth/me", get(handlers::me::me))
+        .route("/profile/bets", get(handlers::bets::list_bets_public))
+        .merge(handlers::market::public_routes());
+    
     // --- protected routes ---
     let protected_v1 = Router::new()
         .route("/health", get(handlers::health::health))
         .route("/ai/probability", get(handlers::ai::get_probability))
         .route("/airdrop/usdc", post(handlers::airdrop::usdc_airdrop_once))
         .route("/admin/metadata", post(handlers::metadata::set_token_metadata))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_user))
-        .merge(handlers::market::routes());
+        .route("/profile/overview", get(handlers::profile::wallet_overview))
+        .merge(handlers::market::protected_routes())
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_user));
 
     Router::new()
         .route("/", get(handlers::root::index))

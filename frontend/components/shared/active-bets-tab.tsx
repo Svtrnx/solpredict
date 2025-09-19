@@ -10,17 +10,17 @@ import { Badge } from "@/components/ui/badge"
 export type Bet = {
   id: string
   question: string
-  side: "YES" | "NO"
+  side: "yes" | "no"
   amount: number
   currentPrice?: number
   entryPrice?: number
-  pnl: string
+  pnl: number
   pnlAmount?: string
   timeLeft?: string
   status?: "winning" | "losing"
   trend?: "up" | "down"
-  result?: "WON" | "LOST"
-  payout?: string
+  result?: "won" | "lost"
+  payout?: number
   resolvedDate?: string
 }
 
@@ -112,9 +112,9 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                   </div>
                   <div className="flex items-center space-x-2">
                     <Badge
-                      variant={bet.side === "YES" ? "secondary" : "destructive"}
+                      variant={bet.side === "yes" ? "secondary" : "destructive"}
                       className={
-                        bet.side === "YES"
+                        bet.side === "no"
                           ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
                           : "bg-rose-500/20 text-rose-400 border-rose-500/30"
                       }
@@ -134,7 +134,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                       ) : (
                         <TrendingDown className="w-3 h-3 text-rose-400" />
                       )}
-                      <span className={`font-semibold ${bet.pnl.startsWith("+") ? "text-emerald-400" : "text-rose-400"}`}>{bet.pnl}</span>
+                      <span className={`font-semibold ${bet.pnl ? "text-emerald-400" : "text-rose-400"}`}>{bet.pnl}</span>
                     </div>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -152,7 +152,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                     {bet.timeLeft}
                   </div>
                   <Link href={`/market/${bet.id}`} className="mt-2">
-                    <Button variant="outline" size="sm" className="glass hover:glow bg-transparent">
+                    <Button variant="outline" size="sm" className="glass hover:glow bg-transparent cursor-pointer">
                       <ExternalLink className="w-3 h-3 mr-1" />
                       View Market
                     </Button>

@@ -4,7 +4,7 @@ use axum_extra::extract::cookie::CookieJar;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
-use crate::state::SharedState;
+use crate::{state::SharedState};
 
 #[derive(Debug, Deserialize)]
 struct Claims {
@@ -27,6 +27,24 @@ struct MeUser {
 struct MeResponse {
     ok: bool,
     user: MeUser,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeOverviewResponse {
+    ok: bool,
+    address: String,
+    totalVolume: f64,
+    totalBets: i64,
+    activeBets: i64,
+    winRate: f64,
+    winRateChange: f64,
+    rank: i64,
+    rankChange: i64,
+    level: String,
+    points: i64,
+    streak: i64,
+    joinDate: String,
 }
 
 // Endpoint: return current authenticated user from session cookie

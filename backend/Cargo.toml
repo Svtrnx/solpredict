@@ -14,7 +14,7 @@ axum = { version = "0.8.4", features = ["http2", "macros", "ws", "multipart"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
-uuid = { version = "1.18.0", features = ["v4"] }
+uuid = { version = "1.18.0", features = ["serde", "v4"] }
 tower_governor = "0.8.0"
 tracing = "0.1.41"
 anyhow = "1.0.99"
@@ -47,6 +47,7 @@ sqlx = { version = "0.8.6", features = [
 	"postgres",
 	"macros",
 	"uuid",
+	"chrono",
 	"time",
 	"rust_decimal",
 ] }
@@ -57,6 +58,7 @@ hex = "0.4.3"
 base64 = "0.22.1"
 bincode = { version = "2.0.1", features = ["serde"] }
 solana-transaction = "3.0.1"
+chrono = "0.4.42"
 
 [patch.crates-io]
 rustls = { git = "https://github.com/apify/rustls.git" }

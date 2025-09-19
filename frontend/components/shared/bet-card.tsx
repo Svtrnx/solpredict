@@ -21,7 +21,7 @@ const formatAmount = (amount: string) => {
   // Extract numeric value and sign
   const sign = amount.startsWith("+") ? "+" : amount.startsWith("-") ? "-" : ""
   const numericValue = Number.parseFloat(amount.replace(/[+-]/g, ""))
-  const usdValue = (numericValue * 40).toFixed(0) // Assuming 1 SOL = $40
+  const usdValue = (numericValue * 40).toFixed(0) // Assuming 1 SOL = $40 !CHANGE!
 
   return (
     <span>
@@ -139,7 +139,7 @@ export function BetCard({ bet, type }: BetCardProps) {
                   {bet.timeLeft}
                 </div>
                 <Link href={`/market/${bet.id}`}>
-                  <Button variant="outline" size="sm" className="glass hover:glow bg-transparent">
+                  <Button variant="outline" size="sm" className="glass hover:glow bg-transparent cursor-pointer">
                     <ExternalLink className="w-3 h-3 mr-1" />
                     View Market
                   </Button>
