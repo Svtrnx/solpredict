@@ -12,12 +12,9 @@ import { Input } from "@/components/ui/input"
 
 import {
   Search,
-  TrendingUp,
   Clock,
   Users,
   DollarSign,
-  ArrowUpRight,
-  ArrowDownRight,
   Loader2,
 } from "lucide-react"
 
@@ -75,7 +72,7 @@ function formatVolume(num: number): string {
 }
 
 const MarketCard = ({ market, index, renderKey }: { market: getMarket; index: number; renderKey: number }) => (
-  <Link key={`${renderKey}-${market.id}-${index}`} href={`/market/${market.id}`}>
+  <Link key={`${renderKey}-${market.id}-${index}`} href={`/market/${market.marketPda}`}>
     <Card
       className="bg-black/20 backdrop-blur-xl border-white/10 hover:border-purple-500/50 transition-all duration-300 cursor-pointer group opacity-0 animate-fade-in"
       style={{
@@ -86,11 +83,17 @@ const MarketCard = ({ market, index, renderKey }: { market: getMarket; index: nu
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between mb-2">
           <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-            {market.category}
+            {market.category.charAt(0).toUpperCase() + market.category.slice(1)}
           </Badge>
           <div className="flex items-center text-gray-400 text-sm">
             <Clock className="h-4 w-4 mr-1" />
-            {market.endDate}
+            {new Date(market.endDate).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </div>
         </div>
         <CardTitle className="text-white text-lg leading-tight group-hover:text-purple-300 transition-colors">
@@ -131,109 +134,6 @@ const MarketCard = ({ market, index, renderKey }: { market: getMarket; index: nu
     </Card>
   </Link>
 )
-
-const mockMarkets: getMarket[] = [
-  {
-    id: 1,
-    title: "Will Bitcoin reach $100,000 by end of 2024?",
-    category: "Crypto",
-    totalVolume: 2000,
-    participants: 1247,
-    yesPrice: 0.67,
-    noPrice: 0.33,
-    endDate: "Dec 31, 2024",
-  },
-  {
-    id: 2,
-    title: "Will Tesla stock hit $300 before Q2 2024?",
-    category: "Stocks",
-    totalVolume: 89000,
-    participants: 892,
-    yesPrice: 0.42,
-    noPrice: 0.58,
-    endDate: "Jun 30, 2024",
-  },
-  {
-    id: 3,
-    title: "Will AI replace 50% of jobs by 2030?",
-    category: "Technology",
-    totalVolume: 180000,
-    participants: 2156,
-    yesPrice: 0.73,
-    noPrice: 0.27,
-    endDate: "Dec 31, 2030",
-  },
-  {
-    id: 4,
-    title: "Will SpaceX land on Mars by 2026?",
-    category: "Space",
-    totalVolume: 83333,
-    participants: 3421,
-    yesPrice: 0.35,
-    noPrice: 0.65,
-    endDate: "Dec 31, 2026",
-  },
-  {
-    id: 5,
-    title: "Will the Fed cut rates below 2% in 2024?",
-    category: "Economics",
-    totalVolume: 123323,
-    participants: 756,
-    yesPrice: 0.28,
-    noPrice: 0.72,
-    endDate: "Dec 31, 2024",
-  },
-  {
-    id: 6,
-    title: "Will renewable energy exceed 50% of US grid by 2025?",
-    category: "Environment",
-    totalVolume: 84917,
-    participants: 432,
-    yesPrice: 0.61,
-    noPrice: 0.39,
-    endDate: "Dec 31, 2025",
-  },
-  {
-    id: 7,
-    title: "Will Manchester City win the Premier League 2024?",
-    category: "Sports",
-    totalVolume: 15000,
-    participants: 1834,
-    yesPrice: 0.78,
-    noPrice: 0.22,
-    endDate: "May 19, 2024",
-  },
-  {
-    id: 8,
-    title: "Will Trump win the 2024 US Presidential Election?",
-    category: "Politics",
-    totalVolume: 47000,
-    participants: 5672,
-    yesPrice: 0.52,
-    noPrice: 0.48,
-    endDate: "Nov 5, 2024",
-  },
-  {
-    id: 9,
-    title: "Will Ethereum reach $5,000 by end of 2024?",
-    category: "Crypto",
-    totalVolume: 70000,
-    participants: 2341,
-    yesPrice: 0.44,
-    noPrice: 0.56,
-    endDate: "Dec 31, 2024",
-  },
-  {
-    id: 10,
-    title: "Will Apple release AR glasses in 2024?",
-    category: "Technology",
-    totalVolume: 90000,
-    participants: 1456,
-    yesPrice: 0.31,
-    noPrice: 0.69,
-    endDate: "Dec 31, 2024",
-  },
-]
 
 const categories = ["All", "Crypto"]
 
@@ -281,9 +181,7 @@ export default function MarketsPage() {
         if (!isReset && hasNextPage && cursorRef.current) params.set("cursor", cursorRef.current);
         if (selectedCategory !== "All") params.set("category", selectedCategory);
 
-        // const res = await fetch(`/v1/markets?${params.toString()}`);
         const json = await getMarketsList();
-        // const json = await res.json() as { ok: boolean; items: getMarket[]; nextCursor?: string };
 
         if (requestId !== requestIdRef.current || !mountedRef.current) return;
 

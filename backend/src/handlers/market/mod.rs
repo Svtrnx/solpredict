@@ -2,7 +2,7 @@ use crate::state::SharedState;
 use axum::{Router, routing::{get, post}};
 
 mod confirm;
-mod markets;
+pub mod markets;
 pub mod create;
 
 pub fn public_routes() -> Router<SharedState> {

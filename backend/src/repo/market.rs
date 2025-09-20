@@ -15,11 +15,17 @@ pub struct MarketRowInsert {
 pub struct MarketRowFetch {
     pub id: Uuid,
     pub category: String,
+    pub market_pda: String,
     pub total_volume_1e6: i64,
     pub participants: i32,
     pub price_yes_bp: Option<i32>,
     pub end_date_utc: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub symbol: String,
+    pub market_type: String,
+    pub comparator: Option<String>,
+    pub bound_lo_1e6: Option<i64>,
+    pub bound_hi_1e6: Option<i64>,
 }
 
 pub struct MarketsPage {
@@ -156,9 +162,11 @@ pub async fn fetch_markets_page(
 
     let mut sql = String::from(
         r#"
-        SELECT id, category, total_volume_1e6, participants, price_yes_bp, end_date_utc, updated_at
-        FROM market_view
-        WHERE 1=1
+            SELECT
+            id, market_pda, category, total_volume_1e6, participants, price_yes_bp, end_date_utc, updated_at,
+            symbol, market_type, comparator, bound_lo_1e6, bound_hi_1e6
+            FROM market_view
+            WHERE 1=1
         "#,
     );
 
@@ -216,11 +224,18 @@ pub async fn fetch_markets_page(
         out.push(MarketRowFetch {
             id: r.try_get("id")?,
             category: r.try_get("category")?,
+            market_pda: r.try_get("market_pda")?,
             total_volume_1e6: r.try_get("total_volume_1e6")?,
             participants: r.try_get("participants")?,
             price_yes_bp: r.try_get("price_yes_bp")?,
             end_date_utc: r.try_get("end_date_utc")?,
             updated_at: r.try_get("updated_at")?,
+            symbol: r.try_get("symbol")?,
+            market_type: r.try_get("market_type")?,
+            comparator: r.try_get("comparator")?,
+            bound_lo_1e6: r.try_get("bound_lo_1e6")?,
+            bound_hi_1e6: r.try_get("bound_hi_1e6")?,
+
         });
     }
 

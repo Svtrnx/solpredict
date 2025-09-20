@@ -4,7 +4,6 @@ pub mod airdrop;
 pub mod health;
 pub mod market;
 pub mod root;
-pub mod bets;
 pub mod siws;
 pub mod ai;
 pub mod me;

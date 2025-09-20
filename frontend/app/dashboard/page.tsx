@@ -45,7 +45,8 @@ export default function DashboardPage() {
       privateData={null}
     />
     :
-       <WalletAuthorizationGuard>
+      // !NEED TO FIX! 
+      <WalletAuthorizationGuard>
         <DashboardSkeleton />
       </WalletAuthorizationGuard>
     }

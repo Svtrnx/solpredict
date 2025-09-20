@@ -161,59 +161,66 @@ export function DashboardSkeleton() {
           </div>
 
           {/* Content Skeleton */}
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i} className="glass glow relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-cyan-500/5"></div>
-                <CardContent className="pt-6 relative z-10">
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                    <div className="lg:col-span-2 space-y-3">
-                      <ShimmerSkeleton className="h-5 w-full" />
-                      <div className="flex items-center space-x-2">
-                        <PulseSkeleton
-                          className="h-6 w-16 rounded-full bg-emerald-500/20 border border-emerald-500/30"
-                          delay={i * 200}
-                        />
-                        <PulseSkeleton
-                          className="h-6 w-16 rounded-full bg-red-500/20 border border-red-500/30"
-                          delay={i * 200 + 100}
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <PulseSkeleton className="h-6 w-12 rounded-full bg-purple-500/20" delay={i * 200 + 200} />
-                        <PulseSkeleton className="h-4 w-20" delay={i * 200 + 300} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <PulseSkeleton className="h-3 w-8" delay={i * 200 + 400} />
-                        <PulseSkeleton className="h-4 w-16" delay={i * 200 + 500} />
-                      </div>
-                      <div className="flex justify-between">
-                        <PulseSkeleton className="h-3 w-12" delay={i * 200 + 600} />
-                        <PulseSkeleton className="h-4 w-20" delay={i * 200 + 700} />
-                      </div>
-                      <div className="relative">
-                        <Skeleton className="h-2 w-full rounded-full bg-gray-800/50" />
-                        <div
-                          className="absolute inset-0 h-2 rounded-full bg-gradient-to-r from-green-400/30 to-purple-500/30 animate-pulse"
-                          style={{ width: `${40 + i * 20}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col space-y-2">
-                      <PulseSkeleton className="h-4 w-16" delay={i * 200 + 800} />
-                      <ShimmerSkeleton className="h-8 w-full rounded border border-white/10 mt-1" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <ProfileActiveBetsSkeleton />
         </div>
       </div>
+    </div>
+  )
+}
+
+
+export function ProfileActiveBetsSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[...Array(8)].map((_, i) => (
+        <Card key={i} className="glass glow relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-cyan-500/5"></div>
+          <CardContent className="pt-6 relative z-10">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              <div className="lg:col-span-2 space-y-3">
+                <ShimmerSkeleton className="h-5 w-full" />
+                <div className="flex items-center space-x-2">
+                  <PulseSkeleton
+                    className="h-6 w-16 rounded-full bg-emerald-500/20 border border-emerald-500/30"
+                    delay={i * 200}
+                  />
+                  <PulseSkeleton
+                    className="h-6 w-16 rounded-full bg-red-500/20 border border-red-500/30"
+                    delay={i * 200 + 100}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <PulseSkeleton className="h-6 w-12 rounded-full bg-purple-500/20" delay={i * 200 + 200} />
+                  <PulseSkeleton className="h-4 w-20" delay={i * 200 + 300} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <PulseSkeleton className="h-3 w-8" delay={i * 200 + 400} />
+                  <PulseSkeleton className="h-4 w-16" delay={i * 200 + 500} />
+                </div>
+                <div className="flex justify-between">
+                  <PulseSkeleton className="h-3 w-12" delay={i * 200 + 600} />
+                  <PulseSkeleton className="h-4 w-20" delay={i * 200 + 700} />
+                </div>
+                <div className="relative">
+                  <Skeleton className="h-2 w-full rounded-full bg-gray-800/50" />
+                  <div
+                    className="absolute inset-0 h-2 rounded-full bg-gradient-to-r from-green-400/30 to-purple-500/30 animate-pulse"
+                    style={{ width: `${40 + i * 20}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="flex flex-col space-y-2">
+                <PulseSkeleton className="h-4 w-16" delay={i * 200 + 800} />
+                <ShimmerSkeleton className="h-8 w-full rounded border border-white/10 mt-1" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }

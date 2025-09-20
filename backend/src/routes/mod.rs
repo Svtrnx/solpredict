@@ -20,7 +20,7 @@ pub fn build(state: SharedState) -> Router {
     // --- rate limit ---
     let governor = GovernorConfigBuilder::default()
         .per_second(1)
-        .burst_size(5)
+        .burst_size(15)
         .finish()
         .unwrap();
 
@@ -35,9 +35,9 @@ pub fn build(state: SharedState) -> Router {
     let public_v1 = Router::new()
         .route("/auth/nonce", get(handlers::siws::nonce::get_nonce))
         .route("/auth/verify", post(handlers::siws::verify::verify))
-        .route("/profile/{wallet}", get(handlers::profile::wallet_overview_public))
+        .route("/profile/{wallet}", get(handlers::profile::profile::wallet_overview_public))
         .route("/auth/me", get(handlers::me::me))
-        .route("/profile/bets", get(handlers::bets::list_bets_public))
+        .route("/profile/bets", get(handlers::profile::bets::list_bets_public))
         .merge(handlers::market::public_routes());
     
     // --- protected routes ---
@@ -46,7 +46,7 @@ pub fn build(state: SharedState) -> Router {
         .route("/ai/probability", get(handlers::ai::get_probability))
         .route("/airdrop/usdc", post(handlers::airdrop::usdc_airdrop_once))
         .route("/admin/metadata", post(handlers::metadata::set_token_metadata))
-        .route("/profile/overview", get(handlers::profile::wallet_overview))
+        .route("/profile/overview", get(handlers::profile::profile::wallet_overview))
         .merge(handlers::market::protected_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_user));
 

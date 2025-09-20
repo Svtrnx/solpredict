@@ -6,8 +6,9 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
+use serde_json::Number;
 
-use crate::{repo::bets as bets_repo, state::SharedState};
+use crate::{repo::bets as bets_repo, handlers::market::markets::{fmt_usd, DATETIME_QUESTION}, state::SharedState};
 
 // ---- helpers ----
 
@@ -19,11 +20,9 @@ fn to_prob(bp: Option<i32>) -> f64 {
     }
 }
 
-
 fn safe_div(num: f64, denom: f64) -> f64 {
     if denom.abs() < 1e-9 { 0.0 } else { num / denom }
 }
-
 
 #[inline]
 fn entry_on_side(side: &str, price_yes_bp_at_bet: Option<i32>) -> f64 {
@@ -36,7 +35,6 @@ fn current_on_side(side: &str, price_yes_bp_now: Option<i32>) -> f64 {
     let p_yes = to_prob(price_yes_bp_now);
     if side == "yes" { p_yes } else { 1.0 - p_yes }
 }
-
 
 #[inline]
 fn pnl_percent_active(entry: f64, current: f64) -> f64 {
@@ -87,14 +85,15 @@ impl From<KindParam> for bets_repo::BetKind {
 #[serde(rename_all = "camelCase")]
 pub struct BetDto {
     id: String,
-    question: String,
+    title: String,
+    market_pda: String,
     side: String,
     amount: f64,
     current_price: Option<f64>,
     entry_price: Option<f64>,
     pnl: f64,
-    pnl_amount: Option<String>,
-    time_left: Option<String>,
+    pnl_amount: Option<Number>,
+    end_date: Option<String>,
     status: Option<String>,
     trend: Option<String>,
     result: Option<String>,
@@ -110,8 +109,8 @@ pub struct BetsPageResponse {
     next_cursor: Option<String>,
 }
 
-const DATETIME_FMT_API: &str = "%Y-%m-%d %H:%M:%S%:z";
-const DATETIME_FMT_QUESTION: &str = "%b %d, %Y UTC";
+const DATETIME_API: &str = "%Y-%m-%d %H:%M:%S%:z";
+// const DATETIME_QUESTION: &str = "%b %d, %Y UTC";
 
 fn resolve_wallet(
     jar: &CookieJar,
@@ -135,20 +134,10 @@ fn resolve_wallet(
     Err((StatusCode::BAD_REQUEST, "wallet is required".into()))
 }
 
-/// USD formatting
-fn fmt_usd(amount: f64) -> String {
-    if amount >= 1.0 {
-        format!("{:.2}", amount)
-    } else if amount >= 0.01 {
-        format!("{:.4}", amount)
-    } else {
-        format!("{:.6}", amount)
-    }
-}
-
-fn generate_question(b: &bets_repo::BetRow) -> String {
+fn generate_title(b: &bets_repo::BetRow) -> String {
     let symbol = &b.symbol;
-    let date_str = b.end_date_utc.format(DATETIME_FMT_QUESTION).to_string();
+    let symbol_trimmed = symbol.strip_prefix("Crypto.").unwrap_or(symbol);
+    let date_str = b.end_date_utc.format(DATETIME_QUESTION).to_string();
 
     match b.market_type.as_str() {
         "price-threshold" => {
@@ -162,7 +151,7 @@ fn generate_question(b: &bets_repo::BetRow) -> String {
                 _ => "reach",
             };
             format!(
-                "Will {symbol} be {cmp_txt} ${} by {date_str}?",
+                "Will {symbol_trimmed} be {cmp_txt} ${} by {date_str}?",
                 fmt_usd(thr)
             )
         }
@@ -170,12 +159,12 @@ fn generate_question(b: &bets_repo::BetRow) -> String {
             let lo = (b.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
             let hi = (b.bound_hi_1e6.unwrap_or(0) as f64) / 1_000_000.0;
             format!(
-                "Will {symbol} stay between ${} and ${} until {date_str}?",
+                "Will {symbol_trimmed} stay between ${} and ${} until {date_str}?",
                 fmt_usd(lo),
                 fmt_usd(hi)
             )
         }
-        _ => symbol.clone(),
+        _ => symbol_trimmed.to_string(),
     }
 }
 
@@ -205,64 +194,69 @@ pub async fn list_bets_public(
             let amount = (b.amount_1e6 as f64) / 1_000_000.0;
             let entry = entry_on_side(&b.side, b.price_yes_bp_at_bet);
             let current = current_on_side(&b.side, b.price_yes_bp);
+            let deadline_str = b.end_date_utc.format(DATETIME_API).to_string();
 
-            let deadline_str = b.end_date_utc.format(DATETIME_FMT_API).to_string();
+            let market_pda = b.market_pda.clone();
 
-            let (pnl, pnl_amount, status, trend, result, resolved_date, time_left) = if !b.settled {
-                let pnl = pnl_percent_active(entry, current);
-                let pnl_amount = pnl_amount_active(amount, entry, current);
-                let status = if current >= entry {
-                    "winning"
+            let (pnl, pnl_amount_f64, status, trend, result, resolved_date, end_date) =
+                if !b.settled {
+                    let pnl = pnl_percent_active(entry, current);
+                    let pnl_amount = pnl_amount_active(amount, entry, current);
+                    let status = if current >= entry {
+                        "winning"
+                    } else {
+                        "losing"
+                    }
+                    .to_string();
+                    let trend = if current >= entry { "up" } else { "down" }.to_string();
+                    (
+                        pnl,
+                        pnl_amount,
+                        Some(status),
+                        Some(trend),
+                        None,
+                        None,
+                        Some(deadline_str.clone()),
+                    )
                 } else {
-                    "losing"
-                }
-                .to_string();
-                let trend = if current >= entry { "up" } else { "down" }.to_string();
-                (
-                    pnl,
-                    pnl_amount,
-                    Some(status),
-                    Some(trend),
-                    None,
-                    None,
-                    Some(deadline_str.clone()),
-                )
-            } else {
-                let res = match b.winning_side {
-                    Some(1) if b.side == "yes" => "won",
-                    Some(2) if b.side == "no" => "won",
-                    Some(1) | Some(2) => "lost",
-                    _ => "lost",
-                }
-                .to_string();
+                    let res = match b.winning_side {
+                        Some(1) if b.side == "yes" => "won",
+                        Some(2) if b.side == "no" => "won",
+                        Some(1) | Some(2) => "lost",
+                        _ => "lost",
+                    }
+                    .to_string();
 
-                let pnl = if res == "won" { 100.0 } else { -100.0 };
-                let pnl_amount = if res == "won" {
-                    amount * (1.0 - entry)
-                } else {
-                    -amount
+                    let pnl = if res == "won" { 100.0 } else { -100.0 };
+                    let pnl_amount = if res == "won" {
+                        amount * (1.0 - entry)
+                    } else {
+                        -amount
+                    };
+                    (
+                        pnl,
+                        pnl_amount,
+                        None,
+                        None,
+                        Some(res),
+                        Some(deadline_str.clone()),
+                        None,
+                    )
                 };
-                (
-                    pnl,
-                    pnl_amount,
-                    None,
-                    None,
-                    Some(res),
-                    Some(deadline_str.clone()),
-                    None,
-                )
-            };
+
+            let pnl_amount_f64 = (pnl_amount_f64 * 10.0).round() / 10.0;
 
             BetDto {
                 id: b.id.to_string(),
-                question: generate_question(&b),
+                title: generate_title(&b),
+                market_pda,
                 side: b.side,
                 amount,
                 current_price: Some(current),
                 entry_price: Some(entry),
                 pnl,
-                pnl_amount: Some(format!("{:.2}", pnl_amount)),
-                time_left,
+                pnl_amount: Number::from_f64(pnl_amount_f64),
+                end_date,
                 status,
                 trend,
                 result,

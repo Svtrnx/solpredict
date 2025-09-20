@@ -6,23 +6,7 @@ import { ExternalLink, Clock, TrendingUp, TrendingDown } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-
-export type Bet = {
-  id: string
-  question: string
-  side: "yes" | "no"
-  amount: number
-  currentPrice?: number
-  entryPrice?: number
-  pnl: number
-  pnlAmount?: string
-  timeLeft?: string
-  status?: "winning" | "losing"
-  trend?: "up" | "down"
-  result?: "won" | "lost"
-  payout?: number
-  resolvedDate?: string
-}
+import { BetData as Bet } from "@/lib/types/bet"
 
 type HistoryBetsTabProps = {
   historyBets: Bet[]
@@ -36,7 +20,7 @@ export function HistoryBetsTab({ historyBets }: HistoryBetsTabProps) {
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               <div className="lg:col-span-2">
-                <h3 className="font-semibold mb-2">{bet.question}</h3>
+                <h3 className="font-semibold mb-2">{bet.title}</h3>
                 <div className="flex items-center space-x-2">
                   <Badge
                     variant={bet.side === "yes" ? "secondary" : "destructive"}

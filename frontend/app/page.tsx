@@ -306,12 +306,12 @@ export default function LandingPage() {
           <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight text-balance animate-on-load animate-fade-in-up">
             <span className="text-white">Bet on the Future.</span>
             <br />
-            <span className="text-white">Challenge the </span>
-            <span className="text-purple-400 animated-slogan">AI</span>
+            <span className="text-white">The Market </span>
+            <span className="text-purple-400 animated-slogan">Never Lies</span>
             <span className="text-white">.</span>
           </h1>
           <h2 className="text-xl md:text-2xl text-gray-300 mb-4 max-w-3xl mx-auto text-pretty leading-relaxed animate-on-load animate-fade-in-up animate-delay-200">
-            A decentralized prediction market where humans compete with AI — powered by{" "}
+            A decentralized prediction market where the future has a price — powered by{" "}
             <span className="text-purple-400 font-semibold"><TextEffect key={"Solana blockchain"} delay={0.2} per="char" preset="blur" className="inline-block whitespace-nowrap align-baseline">Solana blockchain.</TextEffect></span>
           </h2>
           <div className="flex items-center justify-center gap-2 mb-8 animate-on-load animate-fade-in-up animate-delay-400">

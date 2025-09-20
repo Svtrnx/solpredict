@@ -8,7 +8,7 @@ use validator::Validate;
 
 use crate::error::AppError;
 use crate::handlers::market::create::{Comparator, CreateMarketRequest, MarketType};
-use crate::repo::{bet as bet_repo, market as market_repo, points as points_repo};
+use crate::repo::{bets as bets_repo, market as market_repo, points as points_repo};
 use crate::state::SharedState;
 
 use anchor_client::solana_sdk::pubkey::Pubkey;
@@ -229,7 +229,7 @@ pub async fn confirm_market(
             req.create.initial_side,
             crate::handlers::market::create::SeedSide::Yes
         );
-        let maybe_bet_id: Option<i64> = bet_repo::insert_bet_and_upsert_position(
+        let maybe_bet_id: Option<i64> = bets_repo::insert_bet_and_upsert_position(
             state.db.pool(),
             market_id,
             &user_pubkey.to_string(),
