@@ -1,21 +1,28 @@
+import { z } from "zod"
+
 import type { LucideIcon } from "lucide-react"
 
-export interface UserData {
-  address: string
-  displayAddress: string
-  totalVolume: string | number
-  winRate: number
-  winRateChange: string | number
-  rankChange: number
-  totalBets: number
-  activeBets: number
-  rank: number
-  level: string
-  points: number
-  streak: number
-  joinDate: string
-  wallet?: string
-}
+export const UserDataSchema = z.object({
+  address: z.string(),
+  displayAddress: z.string().optional(),
+
+  totalVolume: z.coerce.number(),
+  winRate: z.coerce.number(),
+  winRateChange: z.coerce.number(),
+
+  rankChange: z.number(),
+  totalBets: z.number(),
+  activeBets: z.number(),
+  rank: z.number(),
+
+  level: z.string(),
+  points: z.number(),
+  streak: z.number(),
+
+  joinDate: z.string(),
+  wallet: z.string().optional(),
+})
+export type UserData = z.infer<typeof UserDataSchema>
 
 export interface Achievement {
   id: string

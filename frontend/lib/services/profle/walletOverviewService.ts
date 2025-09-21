@@ -1,44 +1,29 @@
 import axios from "axios"
-
-interface UserData {
-  address: string
-  totalVolume: string
-  winRate: number
-  winRateChange: string
-  rankChange: number
-  totalBets: number
-  activeBets: number
-  rank: number
-  level: string
-  points: number
-  streak: number
-  joinDate: string
-}
+import { UserDataSchema, UserData } from "@/lib/types";
 
 export async function getWalletOverview(): Promise<UserData | null> {
 	try {
-		const data = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/profile/overview`,
+		const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/profile/overview`,
 			{ withCredentials: true }
 		);
-		console.log(data.data)
-		return data.data;
-	} catch (error: any)
-	{
-		console.error("Failed to get /auth/me:", error);
+		const parsed = UserDataSchema.parse(res.data)
+
+		return parsed
+	} catch (error: any) {
+		console.error("Failed to get /profile/overview", error);
 		return null;
 	}
 }
 
 export async function getWalletOverviewPublic(walledId: string): Promise<UserData | null> {
 	try {
-		const data = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/profile/${walledId}`,
+		const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/profile/${walledId}`,
 			{ withCredentials: true }
 		);
-		console.log(data.data)
-		return data.data;
-	} catch (error: any)
-	{
-		console.error("Failed to get /auth/me:", error);
+		const parsed = UserDataSchema.parse(res.data)
+		return parsed
+	} catch (error: any) {
+		console.error("Failed to get /profile/walletId", error);
 		return null;
 	}
 }

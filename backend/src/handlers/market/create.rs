@@ -1,16 +1,19 @@
 use axum::{Json, extract::State, http::HeaderMap, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
-use validator::{Validate, ValidationError};
+use validator::{Validate};
 
-use crate::error::AppError;
-use crate::state::SharedState;
+use crate::{
+    handlers::market::types::{SeedSide, Comparator, MarketType, CreateMarketRequest},
+    solana::anchor_client as anchor_client_,
+    state::SharedState,
+    error::AppError
+};
 
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use prediction_market_program as onchain;
 
-use crate::solana::anchor_client as anchor_client_;
 
 #[derive(Deserialize)]
 struct Claims {
@@ -19,98 +22,6 @@ struct Claims {
     wallet_id: String,
     iat: usize,
     exp: usize,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-pub enum SeedSide {
-    Yes,
-    No,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MarketType {
-    PriceThreshold,
-    PriceRange,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-pub enum MarketCategory {
-    #[serde(rename = "crypto")]
-    Crypto,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-pub enum Comparator {
-    #[serde(rename = ">=")]
-    Gte,
-    #[serde(rename = ">")]
-    Gt,
-    #[serde(rename = "<=")]
-    Lte,
-    #[serde(rename = "<")]
-    Lt,
-    #[serde(rename = "=")]
-    Eq,
-    #[serde(rename = "")]
-    Empty,
-}
-
-// ----- REQUEST -----
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-#[validate(schema(function = "validate_market_fields"))]
-pub struct CreateMarketRequest {
-    pub market_type: MarketType,
-    pub category: MarketCategory,
-
-    #[serde(with = "time::serde::rfc3339")]
-    pub end_date: OffsetDateTime,
-
-    #[validate(range(min = 1.0, message = "Minimum liquidity is 1 unit"))]
-    pub initial_liquidity: f64,
-
-    pub initial_side: SeedSide,
-
-    pub feed_id: String,
-
-    #[validate(length(max = 128, message = "Too long value"))]
-    pub symbol: String,
-
-    pub comparator: Comparator,
-
-    pub threshold: Option<f64>,
-    pub lower_bound: Option<f64>,
-    pub upper_bound: Option<f64>,
-}
-
-// Extra validation for request fields depending on market type
-fn validate_market_fields(req: &CreateMarketRequest) -> Result<(), ValidationError> {
-    match req.market_type {
-        MarketType::PriceThreshold => {
-            if req.threshold.is_none() {
-                return Err(ValidationError::new("threshold_required"));
-            }
-        }
-        MarketType::PriceRange => {
-            let (Some(lo), Some(hi)) = (req.lower_bound, req.upper_bound) else {
-                return Err(ValidationError::new("both_bounds_required"));
-            };
-            if lo >= hi {
-                return Err(ValidationError::new(
-                    "lower_bound_must_be_less_than_upper_bound",
-                ));
-            }
-        }
-    }
-
-    // Feed ID must be valid 64-char hex string
-    let s = req.feed_id.trim_start_matches("0x");
-    if s.len() != 64 || !s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(ValidationError::new("feed_id_must_be_64_hex"));
-    }
-
-    Ok(())
 }
 
 // Map comparator enum into u8 for on-chain representation

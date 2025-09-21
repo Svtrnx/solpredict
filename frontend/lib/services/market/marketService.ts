@@ -1,70 +1,79 @@
 import axios from "axios";
 
-import { CreateMarketFormData } from "@/lib/types";
-import { getMarket } from "@/lib/types";
+import { RawCreateRespSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, ListMarket, MarketSchema, MarketResponse } from "@/lib/types";
 
-type RawCreateResp = {
-	ok: boolean;
-	marketId: string;
-	message: string;
-	tx?: string;
-	createTx?: string;
-	placeBetTx?: string;
-};
+export async function createMarket(
+  formData: CreateMarketFormData
+	): Promise<CreateMarketResponse> {
+		try {
+			const payload = CreateMarketSchema.parse(formData)
+			const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
+			payload,
+			{ 	
+				withCredentials: true, 
+				headers: { "Content-Type": "application/json" } 
+			}
+			)
+			const raw = RawCreateRespSchema.parse(data)
 
-export type CreateMarketResponse = {
-	ok: boolean;
-	marketId: string;
-	tx: string;           
-	message: string;
-};
+			const tx = raw.tx ?? raw.createTx ?? raw.placeBetTx
+			if (!tx) throw new Error("Server didn't return a transaction.")
 
-interface MarketResponse {
-  ok: boolean;
-  items: getMarket[];
-  nextCursor?: string | null;
-}
-
-export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse> {
-	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
-		formData,
-		{ withCredentials: true, headers: { "Content-Type": "application/json" } }
-	);
-
-	const raw = data as RawCreateResp;
-	const tx = raw.tx ?? raw.createTx;
-
-	if (!tx || typeof tx !== "string") {
-		throw new Error("Server didn't return a transaction (expected `tx` or `createTx`).");
+			return { ok: raw.ok, marketId: raw.marketId, tx, message: raw.message ?? "" }
+		} catch (err) {
+			console.error("createMarket failed:", err)
+			throw err
 	}
-
-	return { ok: raw.ok, marketId: raw.marketId, tx, message: raw.message };
 }
+
 
 export async function confirmMarket(
-		create: CreateMarketFormData,
-		marketId: string,
-		signature: string
-	){
+	create: CreateMarketFormData,
+	marketId: string,
+	signature: string
+	) {
 	await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/confirm`, { 
-			create, 
-			txSig: signature, 
-			marketId 
-		},
-		{ withCredentials: true, headers: { "Content-Type": "application/json" } }
+		create, 
+		txSig: signature, 
+		marketId 
+	},
+	{ 	
+		withCredentials: true, 
+		headers: { "Content-Type": "application/json" } 
+	}
 	);
 }
 
 
 export async function getMarketsList(): Promise<MarketResponse> {
+  	try {
+		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
+			{ withCredentials: true }
+		)
+		return MarketResponseSchema.parse(data)
+		} catch (error: any) {
+		if (error.name === "ZodError") {
+		console.error("Invalid /markets payload:", error.errors)
+    } else {
+      console.error("Failed to get /markets:", error)
+    }
+    return { ok: false, items: [], nextCursor: null }
+  }
+}
+
+export async function getMarket(market_address: string) {
 	try {
-		const data = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
+		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets/${market_address}`,
 			{ withCredentials: true }
 		);
-		const marketsData = await data.data as { ok: boolean; items: getMarket[]; nextCursor?: string };
-		return marketsData;
+		const payload = (data && typeof data === "object" && ("item" in data || "data" in data))
+			? (data.item ?? data.data)
+			: data;
+
+		const parsed = MarketSchema.parse(payload);
+  		return { ...parsed, settler: parsed.settler ?? undefined };
 	} catch (error: any) {
-		console.error("Failed to get /markets", error);
-		return { "ok": false, "items": [], "nextCursor": null };
+		console.error("Failed to get /markets/{market_address}", error);
+		throw error
 	}
 }

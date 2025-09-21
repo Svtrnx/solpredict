@@ -8,7 +8,11 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 use serde_json::Number;
 
-use crate::{repo::bets as bets_repo, handlers::market::markets::{fmt_usd, DATETIME_QUESTION}, state::SharedState};
+use crate::{
+    repo::bets as bets_repo,
+    state::SharedState,
+    handlers::market::types::{generate_title, TitleSpec}
+};
 
 // ---- helpers ----
 
@@ -69,6 +73,19 @@ pub struct BetsQuery {
 pub enum KindParam {
     Active,
     History,
+}
+
+impl From<&bets_repo::BetRow> for TitleSpec {
+    fn from(b: &bets_repo::BetRow) -> Self {
+        TitleSpec {
+            symbol: b.symbol.clone(),
+            end_date_utc: b.end_date_utc,
+            market_type: Some(b.market_type.clone()),
+            comparator: b.comparator.clone(),
+            bound_lo_1e6: b.bound_lo_1e6,
+            bound_hi_1e6: b.bound_hi_1e6,
+        }
+    }
 }
 
 impl From<KindParam> for bets_repo::BetKind {
@@ -132,40 +149,6 @@ fn resolve_wallet(
         return Ok(data.claims.wallet);
     }
     Err((StatusCode::BAD_REQUEST, "wallet is required".into()))
-}
-
-fn generate_title(b: &bets_repo::BetRow) -> String {
-    let symbol = &b.symbol;
-    let symbol_trimmed = symbol.strip_prefix("Crypto.").unwrap_or(symbol);
-    let date_str = b.end_date_utc.format(DATETIME_QUESTION).to_string();
-
-    match b.market_type.as_str() {
-        "price-threshold" => {
-            let thr = (b.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            let cmp_txt = match b.comparator.as_deref().unwrap_or(">") {
-                ">" => "greater than",
-                "<" => "less than",
-                ">=" => "greater than or equal to",
-                "<=" => "less than or equal to",
-                "=" => "equal to",
-                _ => "reach",
-            };
-            format!(
-                "Will {symbol_trimmed} be {cmp_txt} ${} by {date_str}?",
-                fmt_usd(thr)
-            )
-        }
-        "price-range" => {
-            let lo = (b.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            let hi = (b.bound_hi_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            format!(
-                "Will {symbol_trimmed} stay between ${} and ${} until {date_str}?",
-                fmt_usd(lo),
-                fmt_usd(hi)
-            )
-        }
-        _ => symbol_trimmed.to_string(),
-    }
 }
 
 pub async fn list_bets_public(
@@ -248,7 +231,7 @@ pub async fn list_bets_public(
 
             BetDto {
                 id: b.id.to_string(),
-                title: generate_title(&b),
+                title: generate_title(&TitleSpec::from(&b)),
                 market_pda,
                 side: b.side,
                 amount,

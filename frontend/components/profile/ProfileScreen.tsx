@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
 import { Copy, Shield, Star, Target } from "lucide-react";
 
 import { DashboardSkeleton, ProfileActiveBetsSkeleton } from "@/components/ui/dashboard-skeleton";
@@ -12,15 +12,14 @@ import { StatsCard } from "@/components/shared/stats-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { fetchBets } from "@/lib/services/bet/betsService";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { useBetsQuery } from "@/hooks/useBetsQuery";
 import { getAchievements, type Achievement } from "@/lib/achievements-data";
-import { BetData, BetsResponse } from "@/lib/types/bet";
 
 // -------------------- Types --------------------
 
@@ -68,7 +67,6 @@ const getLevelInfo = (points: number) => {
   return { level: "Observer", color: "from-gray-400 to-gray-600", nextLevel: "Forecaster", nextThreshold: 1000 };
 };
 
-type LoadMode = "reset" | "append";
 
 // -------------------- Component --------------------
 
@@ -84,110 +82,55 @@ export default function ProfileScreen({
   privateData: PrivateOverview | null;
 }) {
   const user = privateData ?? publicData;
+  const activeQ = useBetsQuery({ wallet, kind: "active", pageSize: 10 })
+  const historyQ = useBetsQuery({ wallet, kind: "history", pageSize: 10 })
+
+  const activeItems = useMemo(
+    () => activeQ.data?.pages.flatMap((p) => p.items) ?? [],
+    [activeQ.data]
+  )
+  const historyItems = useMemo(
+    () => historyQ.data?.pages.flatMap((p) => p.items) ?? [],
+    [historyQ.data]
+  )
 
   const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [active, setActive] = useState<{ items: BetData[]; nextCursor: string | null; loaded: boolean }>({
-    items: [],
-    nextCursor: null,
-    loaded: false,
-  });
-  const [history, setHistory] = useState<{ items: BetData[]; nextCursor: string | null; loaded: boolean }>({
-    items: [],
-    nextCursor: null,
-    loaded: false,
-  });
-
-  const [loading, setLoading] = useState<{ active: boolean; history: boolean }>({ active: false, history: false });
   const [activeTab, setActiveTab] = useState<"active" | "history" | "achievements">("active");
   const [copiedAddress, setCopiedAddress] = useState(false);
 
-
-  const abortRefs = useRef<{ active?: AbortController; history?: AbortController }>({});
-
-  useEffect(() => {
-    abortRefs.current.active?.abort();
-    abortRefs.current.history?.abort();
-    setActive({ items: [], nextCursor: null, loaded: false });
-    setHistory({ items: [], nextCursor: null, loaded: false });
-
-    setActiveTab("active");
-
-    // initial loading of active rates
-    load("active", "reset", 10);
-  }, [wallet]);
-
-  const onTabChange = (v: string) => {
-    const next = v as "active" | "history" | "achievements";
-    setActiveTab(next);
-    if (next === "history" && !history.loaded) {
-      load("history", "reset", 10);
-    }
-  };
-
-  async function load(kind: "active" | "history", mode: LoadMode = "append", pageSize = 10) {
-    const set = kind === "active" ? setActive : setHistory;
-    const get = kind === "active" ? () => active : () => history;
-
-    // cancel the previous request of this kind
-    abortRefs.current[kind]?.abort();
-    const ac = new AbortController();
-    abortRefs.current[kind] = ac;
-
-    setLoading((s) => ({ ...s, [kind]: true }));
-    try {
-      const base = get();
-      const cursor = mode === "reset" ? null : base.nextCursor;
-      const resp: BetsResponse = await fetchBets({ wallet, kind, limit: pageSize, cursor }, ac.signal);
-
-      set((prev) => ({
-        items: mode === "reset" ? resp.items : [...prev.items, ...resp.items],
-        nextCursor: resp.nextCursor,
-        loaded: true,
-      }));
-    } finally {
-      setLoading((s) => ({ ...s, [kind]: false }));
-    }
-  }
-
-  function LoadMore({
-    kind,
-    hasMore,
-    busy,
-  }: { kind: "active" | "history"; hasMore: boolean; busy: boolean }) {
-    if (!hasMore) return null;
+  function LoadMoreButton({ query }: { query: ReturnType<typeof useBetsQuery> }) {
+    if (!query.hasNextPage) return null
     return (
       <div className="flex justify-center mt-4">
         <Button
-          disabled={busy}
-          onClick={() => load(kind, "append", 10)}
+          disabled={query.isFetchingNextPage}
+          onClick={() => query.fetchNextPage()}
           variant="secondary"
           className="min-w-[160px]"
         >
-          {busy ? "Loading…" : "Load more"}
+          {query.isFetchingNextPage ? "Loading…" : "Load more"}
         </Button>
       </div>
-    );
+    )
   }
-
   const sortedActiveBets = useMemo(() => {
-    const getTimeInHours = (endDate?: string) => {
-      if (!endDate) return Number.MAX_SAFE_INTEGER;
-      const s = endDate.trim().toLowerCase();
+    const getTimeInHours = (endDate?: string | null) => {
+      if (!endDate) return Number.MAX_SAFE_INTEGER
+      const s = endDate.toLowerCase()
 
-      const n = parseInt(s, 10);
-      if (Number.isNaN(n)) return Number.MAX_SAFE_INTEGER;
-      if (s.includes("hour") || s.includes("hr") || s.endsWith("h")) return n;
-      if (s.includes("day") || s.endsWith("d")) return n * 24;
-      if (s.includes("week") || s.endsWith("w")) return n * 24 * 7;
-      if (s.includes("month") || s.includes("mo") || s.endsWith("mth")) return n * 24 * 30;
+      if (s.endsWith("h")) return parseInt(s) || Number.MAX_SAFE_INTEGER
+      if (s.endsWith("d")) return (parseInt(s) || 0) * 24
+      if (s.endsWith("w")) return (parseInt(s) || 0) * 24 * 7
+      if (s.endsWith("m")) return (parseInt(s) || 0) * 24 * 30
 
-      return Number.MAX_SAFE_INTEGER;
-    };
+      const t = Date.parse(endDate)
+      return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : (t - Date.now()) / 36e5
+    }
 
-    return [...active.items].sort(
+    return [...activeItems].sort(
       (a, b) => getTimeInHours(a.endDate) - getTimeInHours(b.endDate)
-    );
-  }, [active.items]);
+    )
+  }, [activeItems])
 
   const levelInfo = getLevelInfo(user?.points ?? 0);
   const xpProgress = (() => {
@@ -301,7 +244,7 @@ export default function ProfileScreen({
             <StatsCard stats={user} />
           </div>
 
-          <Tabs value={activeTab} onValueChange={onTabChange} className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-6">
             <TabsList className="glass">
               <TabsTrigger className="cursor-pointer" value="active">Active Bets</TabsTrigger>
               <TabsTrigger className="cursor-pointer" value="history">History</TabsTrigger>
@@ -309,7 +252,7 @@ export default function ProfileScreen({
             </TabsList>
 
             <TabsContent value="active" className="space-y-4">
-              {(loading.active || !active.loaded) && activeTab === "active" ? (
+              {activeQ.isLoading && activeItems.length === 0 ? (
                 <ProfileActiveBetsSkeleton />
               ) : sortedActiveBets.length === 0 ? (
                 // <EmptyState title="No active bets" subtitle="Make your first prediction to see it here." />
@@ -317,7 +260,7 @@ export default function ProfileScreen({
               ) : (
                 <>
                   <ActiveBetsTab activeBets={sortedActiveBets} />
-                  <LoadMore kind="active" hasMore={Boolean(active.nextCursor)} busy={loading.active} />
+                  <LoadMoreButton query={activeQ} />
                   {/* <PaginationComponent
                     pagination={activePagination}
                     onPageChange={(page) => loadBets("active", page)}
@@ -328,7 +271,7 @@ export default function ProfileScreen({
             </TabsContent>
 
             <TabsContent value="history" className="space-y-4">
-              {loading.history && !history.loaded ? (
+              {historyQ.isLoading && historyItems.length === 0 ? (
                 <div className="space-y-4">
                   {[...Array(8)].map((_, i) => (
                     <Card key={i} className="glass animate-pulse">
@@ -352,8 +295,8 @@ export default function ProfileScreen({
                 </div>
               ) : (
                 <>
-                  <HistoryBetsTab historyBets={history.items} />
-                  <LoadMore kind="history" hasMore={Boolean(history.nextCursor)} busy={loading.history} />
+                  <HistoryBetsTab historyBets={historyItems} />
+                  <LoadMoreButton query={historyQ} />
                   {/* <PaginationComponent
                     pagination={historyPagination}
                     onPageChange={(page) => loadBets("history", page)}

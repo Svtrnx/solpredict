@@ -6,10 +6,12 @@ use axum::{
 use serde::Deserialize;
 use validator::Validate;
 
-use crate::error::AppError;
-use crate::handlers::market::create::{Comparator, CreateMarketRequest, MarketType};
-use crate::repo::{bets as bets_repo, market as market_repo, points as points_repo};
-use crate::state::SharedState;
+use crate::{
+    handlers::market::types::{SeedSide, Comparator, MarketType, CreateMarketRequest},
+    repo::{bets as bets_repo, market as market_repo, points as points_repo},
+    state::SharedState,
+    error::AppError
+};
 
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use prediction_market_program as onchain;
@@ -227,7 +229,7 @@ pub async fn confirm_market(
     if seed_amount_1e6 > 0 {
         let side_yes = matches!(
             req.create.initial_side,
-            crate::handlers::market::create::SeedSide::Yes
+            SeedSide::Yes
         );
         let maybe_bet_id: Option<i64> = bets_repo::insert_bet_and_upsert_position(
             state.db.pool(),

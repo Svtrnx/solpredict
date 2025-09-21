@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-// import { ChartTooltip } from "@/components/ui/chart"
 
+import { Tooltip, Area, AreaChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
 import {
   Activity,
   AlertTriangle,
@@ -26,26 +26,11 @@ import {
   Users,
   Wallet,
 } from "lucide-react"
-
+import { getMarket } from "@/lib/services/market/marketService"
+import { fmtCents, fmtCompact, fmtPercent } from "@/lib/utils"
 import { useMobile } from "@/hooks/use-mobile"
 import { useAppSelector } from "@/lib/hooks"
-
-import { Tooltip, Area, AreaChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
-
-
-interface Market {
-  id: string
-  question: string
-  description: string
-  yesPrice: number
-  noPrice: number
-  totalVolume: string
-  participants: number
-  liquidity: string
-  endDate: string
-  category: string
-  creator: string
-}
+import { Market } from "@/lib/types"
 
 interface TimeLeft {
   days: number
@@ -78,11 +63,6 @@ type TooltipProps = {
     payload: ChartPoint;
   }>;
 };
-
-function addTimeLeftToNow(t: TimeLeft) {
-  const secs = (((t.days * 24) + t.hours) * 60 + t.minutes) * 60 + t.seconds;
-  return new Date(Date.now() + secs * 1000).toISOString();
-}
 
 function diff(endAt: string): TimeLeft {
   const end = new Date(endAt).getTime();
@@ -152,11 +132,11 @@ const PriceCard = ({
       <div
         className={`text-5xl font-bold ${isYes ? "text-green-400" : "text-red-400"} drop-shadow-[0_0_15px_rgba(${isYes ? "34,197,94" : "239,68,68"},0.6)]`}
       >
-        {(price * 100).toFixed(0)}¢
+        {fmtCents(price)}
       </div>
       <div className="text-sm text-muted-foreground">Current Price</div>
       <div className={`text-xs ${isYes ? "text-green-400/80" : "text-red-400/80"} font-medium`}>
-        {(price * 100).toFixed(1)}% probability
+        {fmtPercent(price, 1)} probability
       </div>
     </CardContent>
   </Card>
@@ -392,15 +372,18 @@ const AIVsHumansSkeleton = () => (
 export default function MarketPage() {
   const isMobile = useMobile()
   const { isAuthorized } = useAppSelector((state) => state.wallet)
-  const p = useParams<{ id: string | string[] }>();
-  const id = Array.isArray(p.id) ? p.id[0] : p.id ?? "";
-  console.log("p is:", p)
-  console.log("id is:", id)
+  const { id: raw } = useParams<{ id: string | string[] }>();
+  const id = Array.isArray(raw) ? raw[0] : raw ?? "";
+
   const [betAmount, setBetAmount] = useState("")
   const [selectedSide, setSelectedSide] = useState<"yes" | "no" | null>(null)
   const [isPlacingBet, setIsPlacingBet] = useState(false)
   const [walletBalance] = useState(12.45)
   const [isLoading, setIsLoading] = useState(true)
+  
+  const [market, setMarket] = useState<Market | null>(null);
+  const [error, setError]   = useState<string | null>(null);
+
   const [timeLeft, setTimeLeft] = useState<TimeLeft>({
     days: 18,
     hours: 14,
@@ -408,30 +391,18 @@ export default function MarketPage() {
     seconds: 45,
   })
 
-  const market: Market = useMemo(
-    () => ({
-      id: id,
-      question: "Will Bitcoin reach $100,000 by December 31, 2025?",
-      description:
-        "This market will resolve to YES if Bitcoin (BTC) reaches or exceeds $100,000 USD on any major exchange (Coinbase, Binance, Kraken) before December 31, 2025, 11:59 PM UTC.",
-      yesPrice: 0.67,
-      noPrice: 0.33,
-      totalVolume: "$2,847,392",
-      participants: 1247,
-      liquidity: "$892,341",
-      endDate: "2025-12-31",
-      category: "Crypto",
-      creator: "0x1234...5678",
-    }),
-    [id],
-  )
-
   const quickAmounts = [0.1, 0.5, 1, 5]
 
+  const calcCpmImpact = (amount: number, price: number, L: number) => {
+    if (L <= 0) return 0;
+    const sensitivity = price * (1 - price);
+    return Math.min(0.5, (amount / Math.max(L, 1)) * (1 / Math.max(sensitivity, 0.05)));
+  };
+
   const calculatePriceImpact = useCallback((amount: number, side: "yes" | "no") => {
-    const impact = (amount / 100) * 0.02
-    return Math.min(impact, 0.1)
-  }, [])
+    const p = side === "yes" ? market?.yesPrice ?? 0.5 : market?.noPrice ?? 0.5;
+    return calcCpmImpact(amount, p, market?.liquidity ?? 0);
+  }, [market]);
 
   const calculatePayout = useCallback((): PayoutCalculation | null => {
     if (!betAmount || !selectedSide || !market) return null
@@ -450,13 +421,21 @@ export default function MarketPage() {
   )
 
   useEffect(() => {
-    setIsLoading(true)
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  }, [id])
+    let alive = true;
+      (async () => {
+        try {
+          setIsLoading(true);
+          setError(null);
+          const data = await getMarket(id);
+          if (alive) setMarket(data);
+        } catch (e: any) {
+          if (alive) setError(e?.message ?? "Failed to load market");
+        } finally {
+          if (alive) setIsLoading(false);
+        }
+      })();
+      return () => { alive = false; };
+  }, [id]);
 
   const handleBet = useCallback(async () => {
     if (!selectedSide || !betAmount) return
@@ -606,6 +585,28 @@ export default function MarketPage() {
     )
   }
 
+  if (error || !market) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="glass p-6 rounded-xl border">
+          <p className="text-red-400 font-medium mb-2">Failed to load market</p>
+          <p className="text-muted-foreground text-sm">{error ?? "Unknown error"}</p>
+        </div>
+      </div>
+    );
+  }
+  const onAmountChange = (v: string) => {
+    const n = Number.parseFloat(v);
+    if (!Number.isFinite(n) || n < 0) return setBetAmount("");
+    setBetAmount(n.toFixed(2));
+  };
+
+  const statusLabel = { open: "Active", locked: "Locked", settled: "Settled", void: "Void" }[market.status];
+  const canPlace =
+    !!selectedSide &&
+    !!betAmount &&
+    Number.parseFloat(betAmount) <= walletBalance &&
+    !isPlacingBet;
   return (
     <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
       <div className="absolute inset-0 radial-glow"></div>
@@ -620,15 +621,15 @@ export default function MarketPage() {
             </Badge>
             <Badge variant="outline" className="glass">
               <Clock className="w-3 h-3 mr-1" />
-              Active
+              {statusLabel}
             </Badge>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight">{market.question}</h1>
+          <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight">{market.title}</h1>
           <p className="text-lg text-muted-foreground max-w-4xl">{market.description}</p>
         </div>
 
-        <CountdownTimer endAt={addTimeLeftToNow(timeLeft)} />
+        <CountdownTimer endAt={market.endDate} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -660,7 +661,7 @@ export default function MarketPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <Button
                       variant={selectedSide === "yes" ? "default" : "outline"}
-                      className={`h-16 text-lg transition-all duration-300 ${
+                      className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
                         selectedSide === "yes"
                           ? "bg-emerald-600 hover:bg-emerald-700 text-white glow-green scale-105"
                           : "glass hover:bg-emerald-600/20 hover:border-emerald-500/50"
@@ -672,7 +673,7 @@ export default function MarketPage() {
                     </Button>
                     <Button
                       variant={selectedSide === "no" ? "default" : "outline"}
-                      className={`h-16 text-lg transition-all duration-300 ${
+                      className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
                         selectedSide === "no"
                           ? "bg-rose-600 hover:bg-rose-700 text-white glow scale-105"
                           : "glass hover:bg-rose-600/20 hover:border-rose-500/50"
@@ -690,7 +691,7 @@ export default function MarketPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setBetAmount(walletBalance.toString())}
+                        onClick={() => setBetAmount(walletBalance.toFixed(2))}
                         className="text-xs text-muted-foreground hover:text-foreground"
                       >
                         MAX
@@ -700,10 +701,12 @@ export default function MarketPage() {
                     <Input
                       id="bet-amount"
                       type="number"
+                      inputMode="decimal"
                       placeholder="0.00"
                       value={betAmount}
-                      onChange={(e) => setBetAmount(e.target.value)}
+                      onChange={(e) => onAmountChange(e.target.value)}
                       className="glass text-lg h-12"
+                      min="0"
                       max={walletBalance}
                       step="0.01"
                     />
@@ -715,7 +718,7 @@ export default function MarketPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleQuickAmount(amount)}
-                          className="glass hover:bg-accent/20 flex-1"
+                          className="glass cursor-pointer hover:bg-accent/20 flex-1"
                           disabled={amount > walletBalance}
                         >
                           {amount} SOL
@@ -789,10 +792,8 @@ export default function MarketPage() {
 
                   <Button
                     onClick={handleBet}
-                    disabled={
-                      !selectedSide || !betAmount || Number.parseFloat(betAmount) > walletBalance || isPlacingBet
-                    }
-                    className="w-full h-14 text-lg gradient-bg glow hover:glow-green transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!canPlace}
+                    className="w-full cursor-pointer h-14 text-lg gradient-bg glow hover:glow-green transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isPlacingBet ? (
                       <div className="flex items-center space-x-2">
@@ -948,7 +949,7 @@ export default function MarketPage() {
                   <TabsContent value="stats" className="space-y-4 mt-4">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total Volume</span>
-                      <span className="font-semibold">{market.totalVolume}</span>
+                      <span className="font-semibold">${fmtCompact(market.totalVolume)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Participants</span>
@@ -961,7 +962,7 @@ export default function MarketPage() {
                       <span className="text-muted-foreground">Liquidity</span>
                       <span className="font-semibold flex items-center">
                         <Droplets className="w-4 h-4 mr-1" />
-                        {market.liquidity}
+                        ${fmtCompact(market.liquidity)}
                       </span>
                     </div>
                     <div className="flex justify-between">

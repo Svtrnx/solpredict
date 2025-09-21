@@ -1,29 +1,47 @@
-// src/handlers/markets.rs
 use axum::{extract::{Query, State}, Json, http::{StatusCode}};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::repo::market as market_repo;
-use crate::state::SharedState;
+use crate::{
+    repo::market as market_repo,
+    state::SharedState,
+    handlers::market::types::{generate_title, TitleSpec}
+};
+
+
+impl From<&market_repo::MarketRowFetch> for TitleSpec {
+    fn from(r: &market_repo::MarketRowFetch) -> Self {
+        TitleSpec {
+            symbol: r.symbol.clone(),
+            end_date_utc: r.end_date_utc,
+            market_type: Some(r.market_type.clone()),
+            comparator: r.comparator.clone(),
+            bound_lo_1e6: r.bound_lo_1e6,
+            bound_hi_1e6: r.bound_hi_1e6,
+        }
+    }
+}
 
 #[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 pub struct MarketDto {
     id: Uuid,
     category: String,
     market_pda: String,
     title: String,
-    totalVolume: f64,
+    total_volume: f64,
     participants: i32,
-    yesPrice: f64,
-    noPrice: f64,
-    endDate: String,
+    yes_price: f64,
+    no_price: f64,
+    end_date: String,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 pub struct MarketsPageResponse {
     ok: bool,
     items: Vec<MarketDto>,
-    nextCursor: Option<String>, // base64 "{updated_at}|{id}"
+    next_cursor: Option<String>, // base64 "{updated_at}|{id}"
 }
 
 #[derive(Deserialize)]
@@ -45,37 +63,8 @@ pub fn fmt_usd(amount: f64) -> String {
     }
 }
 
-pub fn generate_title(m: &market_repo::MarketRowFetch) -> String {
-    let symbol_trimmed = m.symbol.strip_prefix("Crypto.").unwrap_or(&m.symbol);
-    let date_str = m.end_date_utc.format(DATETIME_QUESTION).to_string();
 
-    match m.market_type.as_str() {
-        "price-threshold" => {
-            let thr = (m.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            let cmp_txt = match m.comparator.as_deref().unwrap_or(">") {
-                ">"  => "greater than",
-                "<"  => "less than",
-                ">=" => "greater than or equal to",
-                "<=" => "less than or equal to",
-                "="  => "equal to",
-                _    => "reach",
-            };
-            format!("Will {symbol_trimmed} be {cmp_txt} ${} by {date_str}?", fmt_usd(thr))
-        }
-        "price-range" => {
-            let lo = (m.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            let hi = (m.bound_hi_1e6.unwrap_or(0) as f64) / 1_000_000.0;
-            format!(
-                "Will {symbol_trimmed} stay between ${} and ${} until {date_str}?",
-                fmt_usd(lo),
-                fmt_usd(hi)
-            )
-        }
-        _ => symbol_trimmed.to_string(),
-    }
-}
-
-pub async fn list_markets(
+pub async fn list(
     State(state): State<SharedState>,
     Query(q): Query<MarketsQuery>,
 ) -> Result<Json<MarketsPageResponse>, (StatusCode, String)> {
@@ -90,15 +79,15 @@ pub async fn list_markets(
 
     let items = page.items.into_iter().map(|m| MarketDto{
         id: m.id,
-        title: generate_title(&m),
+        title: generate_title(&TitleSpec::from(&m)),
         market_pda: m.market_pda,
         category: m.category,
-        totalVolume: (m.total_volume_1e6 as f64) / 1_000_000.0,
+        total_volume: (m.total_volume_1e6 as f64) / 1_000_000.0,
         participants: m.participants,
-        yesPrice: (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
-        noPrice: 1.0 - (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
-        endDate: m.end_date_utc.to_rfc3339(),
+        yes_price: (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
+        no_price: 1.0 - (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
+        end_date: m.end_date_utc.to_rfc3339(),
     }).collect();
 
-    Ok(Json(MarketsPageResponse{ ok: true, items, nextCursor: page.next_cursor }))
+    Ok(Json(MarketsPageResponse{ ok: true, items, next_cursor: page.next_cursor }))
 }

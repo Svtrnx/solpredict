@@ -80,3 +80,14 @@ export function getLevelInfo(points: number) {
     return { level: "Forecaster", color: "from-yellow-400 to-orange-600", nextLevel: "Prophet", nextThreshold: 1000 }
   return { level: "Observer", color: "from-gray-400 to-gray-600", nextLevel: "Forecaster", nextThreshold: 1000 }
 }
+
+export const fmtUsd = (n: number) =>
+  n >= 1 ? n.toFixed(2) : n >= 0.01 ? n.toFixed(4) : n.toFixed(6);
+
+export const fmtCompact = (n: number) =>
+  new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+
+export const fmtPercent = (p: number, digits = 1) =>
+  `${(p * 100).toFixed(digits)}%`;
+
+export const fmtCents = (p: number) => `${(p * 100).toFixed(0)}¢`;

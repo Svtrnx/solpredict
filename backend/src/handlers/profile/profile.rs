@@ -10,17 +10,17 @@ use crate::{middleware::auth::CurrentUser, state::SharedState};
 pub struct WalletOverviewResponse {
     ok: bool,
     address: String,
-    totalVolume: f64,
-    totalBets: i64,
-    activeBets: i64,
-    winRate: f64,
-    winRateChange: f64,
+    total_volume: f64,
+    total_bets: i64,
+    active_bets: i64,
+    win_rate: f64,
+    win_rate_change: f64,
     rank: i64,
-    rankChange: i64,
+    rank_change: i64,
     level: String,
     points: i64,
     streak: i64,
-    joinDate: String,
+    join_date: String,
 }
 
 pub async fn wallet_overview(
@@ -42,17 +42,17 @@ pub async fn wallet_overview(
     Ok(Json(WalletOverviewResponse {
         ok: true,
         address: ov.address,
-        totalVolume: ov.total_volume,
-        totalBets: ov.total_bets,
-        activeBets: ov.active_bets,
-        winRate: ov.win_rate,
-        winRateChange: ov.win_rate_change,
+        total_volume: ov.total_volume,
+        total_bets: ov.total_bets,
+        active_bets: ov.active_bets,
+        win_rate: ov.win_rate,
+        win_rate_change: ov.win_rate_change,
         rank: ov.rank,
-        rankChange: ov.rank_change,
+        rank_change: ov.rank_change,
         level: ov.level,
         points: ov.points,
         streak: ov.streak,
-        joinDate: ov.join_date,
+        join_date: ov.join_date,
     }))
 }
 
@@ -67,16 +67,16 @@ pub async fn wallet_overview_public(
     Ok(Json(WalletOverviewResponse {
         ok: true,
         address: ov.address,
-        totalVolume: ov.total_volume,
-        totalBets: ov.total_bets,
-        activeBets: ov.active_bets,
-        winRate: ov.win_rate,
-        winRateChange: ov.win_rate_change,
+        total_volume: ov.total_volume,
+        total_bets: ov.total_bets,
+        active_bets: ov.active_bets,
+        win_rate: ov.win_rate,
+        win_rate_change: ov.win_rate_change,
         rank: ov.rank,
-        rankChange: ov.rank_change,
+        rank_change: ov.rank_change,
         level: ov.level,
         points: ov.points,
         streak: ov.streak,
-        joinDate: ov.join_date,
+        join_date: ov.join_date,
     }))
 }

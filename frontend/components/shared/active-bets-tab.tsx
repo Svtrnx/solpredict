@@ -26,12 +26,9 @@ function getBetUrgency(endDate: string) {
   if (diffHours <= 24) {
     return "warning"
   }
-  if (diffDays <= 1) {
-    return "warning"
-  }
-  if (diffDays <= 3) {
-    return "warning"
-  }
+  // if (diffDays <= 3) {
+  //   return "warning"
+  // }
 
   return "normal"
 }
@@ -154,7 +151,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
 
                 <div className="flex flex-col">
                   <div className={`text-sm flex items-center ${urgencyStyles.timeClass}`}>
-                    <Clock className={`w-3 h-3 mr-1 ${urgency === "warning" ? "animate-pulse" : ""}`} />
+                    <Clock className={`w-3 h-3 mr-1 ${urgency === "urgent" ? "animate-pulse" : ""}`} />
                     {new Date(bet.endDate ? bet.endDate : 0).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "short",

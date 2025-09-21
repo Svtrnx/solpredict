@@ -20,7 +20,7 @@ import {
 
 import { getMarketsList } from "@/lib/services/market/marketService"
 import { useScrollPagination } from "@/hooks/use-scroll-pagination"
-import { getMarket } from "@/lib/types"
+import { ListMarket } from "@/lib/types"
 
 interface LoadingState {
   initial: boolean
@@ -71,7 +71,7 @@ function formatVolume(num: number): string {
   }).format(num);
 }
 
-const MarketCard = ({ market, index, renderKey }: { market: getMarket; index: number; renderKey: number }) => (
+const MarketCard = ({ market, index, renderKey }: { market: ListMarket; index: number; renderKey: number }) => (
   <Link key={`${renderKey}-${market.id}-${index}`} href={`/market/${market.marketPda}`}>
     <Card
       className="bg-black/20 backdrop-blur-xl border-white/10 hover:border-purple-500/50 transition-all duration-300 cursor-pointer group opacity-0 animate-fade-in"
@@ -149,7 +149,7 @@ export default function MarketsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [sortBy, setSortBy] = useState("volume")
-  const [markets, setMarkets] = useState<getMarket[]>([])
+  const [markets, setMarkets] = useState<ListMarket[]>([])
   const [loading, setLoading] = useState<LoadingState>({ initial: true, more: false })
   const [currentPage, setCurrentPage] = useState(1)
   const [hasNextPage, setHasNextPage] = useState(true)

@@ -1,11 +1,10 @@
-use crate::handlers::market::create::{
-    Comparator, CreateMarketRequest, MarketCategory, MarketType,
-};
-use uuid::Uuid;
-use sqlx::{PgPool, Row};
-use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Row};
+use anyhow::Result;
+use uuid::Uuid;
+
+use crate::handlers::market::types::{Comparator, MarketType, MarketCategory, CreateMarketRequest};
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct MarketRowInsert {
@@ -26,6 +25,31 @@ pub struct MarketRowFetch {
     pub comparator: Option<String>,
     pub bound_lo_1e6: Option<i64>,
     pub bound_hi_1e6: Option<i64>,
+}
+
+#[derive(sqlx::FromRow, Debug)]
+pub struct MarketRow {
+    pub id: uuid::Uuid,
+    pub market_pda: String,
+    pub creator: String,
+    pub category: String,
+    pub symbol: String,
+    pub end_date_utc: chrono::DateTime<chrono::Utc>,
+
+    pub market_type: String,
+    pub comparator: Option<String>,
+    pub bound_lo_1e6: Option<i64>,
+    pub bound_hi_1e6: Option<i64>,
+
+    pub initial_liquidity_1e6: i64,
+    pub yes_total_1e6: i64,
+    pub no_total_1e6: i64,
+    pub total_volume_1e6: i64,
+    pub participants: i32,
+
+    pub price_yes_bp: Option<i32>,
+    pub status: String,
+    pub resolver_pubkey: Option<String>,
 }
 
 pub struct MarketsPage {
@@ -192,7 +216,7 @@ pub async fn fetch_markets_page(
         .bind(category.unwrap())
         .bind(cur_ts.unwrap())
         .bind(cur_id.unwrap())
-        .bind(limit + 1) // get +1 to see if there is a continuation.
+        .bind(limit + 1) // get +1 to see if there is a continuation
         .fetch_all(pool)
         .await?
     } else if category.is_some() {
@@ -255,4 +279,38 @@ pub async fn fetch_markets_page(
         items: out,
         next_cursor,
     })
+}
+pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> Result<Option<MarketRow>> {
+    let row = sqlx::query_as::<_, MarketRow>(
+        r#"
+            SELECT
+                id,
+                market_pda,
+                creator,                 
+                category,
+                symbol,
+                end_date_utc,
+
+                market_type,
+                comparator,
+                bound_lo_1e6,
+                bound_hi_1e6,
+
+                initial_liquidity_1e6,
+                yes_total_1e6,
+                no_total_1e6,
+                total_volume_1e6,
+                participants,
+
+                price_yes_bp,
+                status,
+                resolver_pubkey
+            FROM market_view
+            WHERE market_pda = $1
+        "#,
+    )
+    .bind(market_pda)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
 }

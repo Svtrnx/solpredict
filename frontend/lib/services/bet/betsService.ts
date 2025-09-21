@@ -1,22 +1,31 @@
 import axios from "axios";
-import {BetsKind, BetsResponse } from "@/lib/types/bet";
+import { BetsResponseSchema, BetsKind, BetsResponse } from "@/lib/types/bet";
 
-export async function fetchBets({ wallet, kind, limit = 10, cursor }: { 
-	wallet?: string;
-	kind: BetsKind; 
-	limit?: number; 
+export async function fetchBets(params: {
+	wallet?: string
+	kind: BetsKind
+	limit?: number
 	cursor?: string | null
-	},
-		signal?: AbortSignal
-	): Promise<BetsResponse> {
-	const params = new URLSearchParams();
-	params.set("kind", kind);
-	if (wallet) params.set("wallet", wallet);
-	if (limit) params.set("limit", String(limit));
-	if (cursor) params.set("cursor", cursor);
+	signal?: AbortSignal
+}): Promise<BetsResponse> {
+	try{
+		const qs = new URLSearchParams()
+		qs.set("kind", params.kind)
+		if (params.wallet) qs.set("wallet", params.wallet)
+		if (params.limit) qs.set("limit", String(params.limit))
+		if (params.cursor) qs.set("cursor", params.cursor)
+	
+		const { data } = await axios.get(
+			`${process.env.NEXT_PUBLIC_API_URL}/profile/bets?${qs.toString()}`,
+			{ withCredentials: true, signal: params.signal }
+		)
+		console.log(`data query param: qs ${qs}`, data)
+		const parsed = BetsResponseSchema.parse(data)
+		console.log(`parsed query param: qs ${qs}`, parsed)
+		return { ...parsed, nextCursor: parsed.nextCursor ?? null }
 
-	const res = await axios(`${process.env.NEXT_PUBLIC_API_URL}/profile/bets?${params.toString()}`, {
-		signal
-	});
-	return res.data;
+	} catch (err: any)
+	{
+		throw err;
+	}
 }

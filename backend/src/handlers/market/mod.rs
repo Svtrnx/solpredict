@@ -1,13 +1,16 @@
 use crate::state::SharedState;
 use axum::{Router, routing::{get, post}};
 
-mod confirm;
 pub mod markets;
 pub mod create;
+pub mod types;
+mod confirm;
+mod get;
 
 pub fn public_routes() -> Router<SharedState> {
     Router::new()
-        .route("/markets", get(markets::list_markets))
+        .route("/markets", get(markets::list))
+        .route("/markets/{market_address}", get(get::handle))
 }
 
 pub fn protected_routes() -> Router<SharedState> {

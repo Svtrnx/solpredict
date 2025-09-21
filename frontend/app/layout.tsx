@@ -4,6 +4,7 @@ import type React from "react"
 
 import { SolanaWalletProvider } from "@/components/providers/solana-wallet-provider"
 import { ReduxProvider } from "@/components/providers/redux-provider"
+import { QueryProvider } from "@/components/providers/query-provider"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { Toaster } from "@/components/ui/sonner"
 import { Navbar } from "@/components/navbar"
@@ -37,30 +38,31 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} antialiased dark`}>
       <body suppressHydrationWarning>
         <SolanaWalletProvider>
-          <ReduxProvider>
-            {/* <div className="blockchain-network">
-              <div className="network-grid"></div>
-              <div className="network-nodes">
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-node"></div>
-                <div className="network-line"></div>
-                <div className="network-line"></div>
-                <div className="network-line"></div>
-                <div className="network-line"></div>
-                <div className="network-line"></div>
-              </div>
-            </div> */}
-            <ScrollToTop />
-            <Navbar />
-            {children}
-          </ReduxProvider>
-
+          <QueryProvider>
+            <ReduxProvider>
+              {/* <div className="blockchain-network">
+                <div className="network-grid"></div>
+                <div className="network-nodes">
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-node"></div>
+                  <div className="network-line"></div>
+                  <div className="network-line"></div>
+                  <div className="network-line"></div>
+                  <div className="network-line"></div>
+                  <div className="network-line"></div>
+                </div>
+              </div> */}
+              <ScrollToTop />
+              <Navbar />
+              {children}
+            </ReduxProvider>
+          </QueryProvider>
         </SolanaWalletProvider>
         <Toaster  />
       </body>
