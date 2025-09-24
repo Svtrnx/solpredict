@@ -2,12 +2,17 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 
-import { useParams } from "next/navigation"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { useParams, useRouter } from "next/navigation"
+import { Connection } from "@solana/web3.js"
 
+import { Tooltip as Tooltip_, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ShimmerSkeleton, PulseSkeleton } from "@/components/ui/skeleton"
+import { SlidingNumber } from "@/components/ui/sliding-number"
 import { DualProgress } from "@/components/ui/dual-progress"
+import { CustomButton } from "@/components/ui/custom-button"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -24,20 +29,21 @@ import {
   Droplets,
   TrendingUp,
   Users,
-  Wallet,
+  Copy, 
+  User, 
+  Check,
+  ArrowRight
 } from "lucide-react"
-import { getMarket } from "@/lib/services/market/marketService"
-import { fmtCents, fmtCompact, fmtPercent } from "@/lib/utils"
-import { useMobile } from "@/hooks/use-mobile"
-import { useAppSelector } from "@/lib/hooks"
-import { Market } from "@/lib/types"
 
-interface TimeLeft {
-  days: number
-  hours: number
-  minutes: number
-  seconds: number
-}
+import { AIVsHumansSkeleton, ChartSkeleton, InsightsSkeleton, CountdownSkeleton, PriceCardSkeleton, BettingCardSkeleton } from "./skeletons"
+import { prepareBet, confirmBet } from "@/lib/services/bet/betsService"
+import {cn, fmtCents, fmtCompact, fmtPercent, diff } from "@/lib/utils"
+import { getMarket } from "@/lib/services/market/marketService"
+import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
+import { showToast } from "@/components/shared/show-toast"
+import { useMobile } from "@/hooks/use-mobile"
+import { Market, TimeLeft } from "@/lib/types"
+import { useAppSelector } from "@/lib/hooks"
 
 interface PayoutCalculation {
   shares: number
@@ -64,17 +70,6 @@ type TooltipProps = {
   }>;
 };
 
-function diff(endAt: string): TimeLeft {
-  const end = new Date(endAt).getTime();
-  const now = Date.now();
-  const d = Math.max(0, end - now);
-  const days = Math.floor(d / 86400000);
-  const hours = Math.floor((d % 86400000) / 3600000);
-  const minutes = Math.floor((d % 3600000) / 60000);
-  const seconds = Math.floor((d % 60000) / 1000);
-  return { days, hours, minutes, seconds };
-}
-
 function CountdownTimer({ endAt }: { endAt: string }) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => diff(endAt));
 
@@ -95,7 +90,8 @@ function CountdownTimer({ endAt }: { endAt: string }) {
             {Object.entries(timeLeft).map(([unit, value]) => (
               <div key={unit} className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold gradient-text tabular-nums">
-                  {value.toString().padStart(2, "0")}
+                  {/* {value.toString().padStart(2, "0")} */}
+                  <SlidingNumber value={value} padStart /> 
                 </div>
                 <div className="text-xs sm:text-sm text-muted-foreground capitalize">{unit}</div>
               </div>
@@ -142,256 +138,28 @@ const PriceCard = ({
   </Card>
 )
 
-const CountdownSkeleton = () => (
-  <Card className="glass glow">
-    <CardContent className="pt-6">
-      <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-8">
-        <div className="flex items-center space-x-2">
-          <PulseSkeleton className="w-5 h-5 rounded-full" />
-          <PulseSkeleton className="h-4 w-32" delay={100} />
-        </div>
-        <div className="flex space-x-2 sm:space-x-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="text-center">
-              <ShimmerSkeleton className="h-8 w-12 mb-2" />
-              <PulseSkeleton className="h-3 w-12" delay={index * 50} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)
-
-const PriceCardSkeleton = ({ isYes }: { isYes: boolean }) => (
-  <Card className={`glass relative overflow-hidden ${isYes ? "glow-green" : "glow"}`}>
-    <div
-      className={`absolute inset-0 bg-gradient-to-br ${
-        isYes ? "from-green-500/10 via-transparent to-green-600/5" : "from-red-500/10 via-transparent to-red-600/5"
-      }`}
-    ></div>
-    <CardHeader className="relative z-10">
-      <div className="flex items-center justify-between">
-        <PulseSkeleton className="h-6 w-8" />
-        <PulseSkeleton className="w-5 h-5 rounded-full" delay={100} />
-      </div>
-    </CardHeader>
-    <CardContent className="relative z-10 text-center space-y-4">
-      <ShimmerSkeleton className="h-12 w-20 mx-auto" />
-      <PulseSkeleton className="h-4 w-24 mx-auto" delay={200} />
-      <PulseSkeleton className="h-3 w-20 mx-auto" delay={300} />
-    </CardContent>
-  </Card>
-)
-
-const BettingCardSkeleton = () => (
-  <Card className="glass glow-cyan">
-    <CardHeader>
-      <div className="flex items-center justify-between">
-        <PulseSkeleton className="h-6 w-32" />
-        <div className="flex items-center space-x-2">
-          <PulseSkeleton className="w-4 h-4 rounded-full" />
-          <PulseSkeleton className="h-4 w-20" delay={100} />
-        </div>
-      </div>
-    </CardHeader>
-    <CardContent className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <ShimmerSkeleton className="h-16 rounded-lg" />
-        <ShimmerSkeleton className="h-16 rounded-lg" />
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <PulseSkeleton className="h-4 w-24" />
-          <PulseSkeleton className="h-4 w-8" delay={100} />
-        </div>
-        <ShimmerSkeleton className="h-12 rounded-lg" />
-        <div className="flex space-x-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <PulseSkeleton key={index} className="h-8 flex-1" delay={index * 50} />
-          ))}
-        </div>
-      </div>
-
-      <ShimmerSkeleton className="h-14 w-full rounded-lg" />
-    </CardContent>
-  </Card>
-)
-
-const ChartSkeleton = () => (
-  <Card className="glass glow relative overflow-hidden">
-    <CardHeader className="relative z-10">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <PulseSkeleton className="w-5 h-5 rounded-full" />
-          <PulseSkeleton className="h-6 w-48" delay={100} />
-        </div>
-        <PulseSkeleton className="h-5 w-20 rounded-full" delay={200} />
-      </div>
-    </CardHeader>
-    <CardContent className="relative z-10">
-      <div className="space-y-6">
-        <div className="flex items-center justify-center space-x-8">
-          <div className="flex items-center space-x-2">
-            <PulseSkeleton className="w-3 h-3 rounded-full" />
-            <PulseSkeleton className="h-4 w-24" delay={50} />
-          </div>
-          <div className="flex items-center space-x-2">
-            <PulseSkeleton className="w-3 h-3 rounded-full" />
-            <PulseSkeleton className="h-4 w-32" delay={100} />
-          </div>
-        </div>
-
-        <div className="h-80 w-full relative overflow-hidden rounded-lg bg-white/5">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer"></div>
-          <div className="absolute bottom-4 left-4 right-4 top-4">
-            <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <PulseSkeleton key={index} className="h-3 w-8" delay={index * 30} />
-              ))}
-            </div>
-            <div className="absolute bottom-0 left-8 right-0 flex justify-between">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <PulseSkeleton key={index} className="h-3 w-8" delay={index * 40} />
-              ))}
-            </div>
-            <div className="absolute left-8 right-4 top-4 bottom-8">
-              <svg className="w-full h-full opacity-30">
-                <defs>
-                  <linearGradient id="skeletonGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="transparent" />
-                    <stop offset="50%" stopColor="rgba(6, 182, 212, 0.3)" />
-                    <stop offset="100%" stopColor="transparent" />
-                  </linearGradient>
-                  <linearGradient id="skeletonGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="transparent" />
-                    <stop offset="50%" stopColor="rgba(16, 185, 129, 0.3)" />
-                    <stop offset="100%" stopColor="transparent" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0,60 Q50,40 100,50 T200,45 T300,35"
-                  stroke="url(#skeletonGradient1)"
-                  strokeWidth="2"
-                  fill="none"
-                  className="animate-pulse"
-                />
-                <path
-                  d="M0,80 Q50,70 100,65 T200,55 T300,45"
-                  stroke="url(#skeletonGradient2)"
-                  strokeWidth="2"
-                  fill="none"
-                  className="animate-pulse"
-                  style={{ animationDelay: "0.5s" }}
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="glass p-4 rounded-lg text-center">
-              <ShimmerSkeleton className="h-6 w-12 mx-auto mb-1" />
-              <PulseSkeleton className="h-3 w-20 mx-auto" delay={index * 100} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)
-
-const InsightsSkeleton = () => (
-  <Card className="glass glow">
-    <CardHeader>
-      <PulseSkeleton className="h-6 w-32" />
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-2 glass rounded-lg p-1">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <PulseSkeleton key={index} className="h-8 rounded-md" delay={index * 50} />
-          ))}
-        </div>
-
-        <div className="space-y-4 mt-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="flex justify-between">
-              <PulseSkeleton className="h-4 w-24" delay={index * 50} />
-              <PulseSkeleton className="h-4 w-16" delay={index * 50 + 100} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)
-
-const AIVsHumansSkeleton = () => (
-  <Card className="glass glow-cyan">
-    <CardHeader>
-      <div className="flex items-center space-x-2">
-        <PulseSkeleton className="w-5 h-5 rounded-full" />
-        <PulseSkeleton className="h-6 w-24" delay={100} />
-      </div>
-    </CardHeader>
-    <CardContent className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        {Array.from({ length: 2 }).map((_, index) => (
-          <div key={index} className="text-center space-y-2">
-            <div className="flex items-center justify-center space-x-2">
-              <PulseSkeleton className="w-4 h-4 rounded-full" />
-              <PulseSkeleton className="h-4 w-16" delay={50} />
-            </div>
-            <ShimmerSkeleton className="h-8 w-12 mx-auto" />
-            <PulseSkeleton className="h-3 w-8 mx-auto" delay={index * 100} />
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <PulseSkeleton className="h-4 w-32" />
-          <PulseSkeleton className="h-4 w-24" delay={100} />
-        </div>
-        <ShimmerSkeleton className="h-8 rounded-lg" />
-        <div className="glass p-3 rounded-lg">
-          <div className="space-y-2">
-            <PulseSkeleton className="h-3 w-full" />
-            <PulseSkeleton className="h-3 w-4/5" delay={100} />
-            <PulseSkeleton className="h-3 w-3/4" delay={200} />
-          </div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)
-
 export default function MarketPage() {
   const isMobile = useMobile()
+  const router = useRouter()
   const { isAuthorized } = useAppSelector((state) => state.wallet)
   const { id: raw } = useParams<{ id: string | string[] }>();
-  const id = Array.isArray(raw) ? raw[0] : raw ?? "";
+  const market_pda = Array.isArray(raw) ? raw[0] : raw ?? "";
 
   const [betAmount, setBetAmount] = useState("")
   const [selectedSide, setSelectedSide] = useState<"yes" | "no" | null>(null)
   const [isPlacingBet, setIsPlacingBet] = useState(false)
-  const [walletBalance] = useState(12.45)
+  
+  const walletBalance = useAppSelector(s => s.wallet.balance)
+  const numericBalance = walletBalance ?? 0
+
   const [isLoading, setIsLoading] = useState(true)
   
   const [market, setMarket] = useState<Market | null>(null);
   const [error, setError]   = useState<string | null>(null);
 
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>({
-    days: 18,
-    hours: 14,
-    minutes: 32,
-    seconds: 45,
-  })
+  const [copied, setCopied] = useState(false)
 
-  const quickAmounts = [0.1, 0.5, 1, 5]
+  const quickAmounts = [1, 5, 50, 100]
 
   const calcCpmImpact = (amount: number, price: number, L: number) => {
     if (L <= 0) return 0;
@@ -420,13 +188,79 @@ export default function MarketPage() {
     [betAmount, selectedSide, calculatePriceImpact, market],
   )
 
+  const wallet = useWallet()
+  const connection = useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
+
+  const handleBet = useCallback(async () => {
+    if (!selectedSide || !betAmount || !market) return;
+
+    try {
+      setIsPlacingBet(true);
+
+      const amount = Number.parseFloat(String(betAmount).replace(",", "."));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        showToast("danger", "Enter a valid amount");
+        return;
+      }
+      if (amount > numericBalance) {
+        showToast("danger", "Insufficient balance");
+        return;
+      }
+
+      // prepare (unsigned tx)
+      const prep = await prepareBet({
+        market_pda: market_pda,
+        side: selectedSide,
+        amount_ui: amount,
+      });
+
+      if (!prep?.tx_base64) {
+        showToast("danger", "Server didn't return a transaction to sign.");
+        return;
+      }
+
+      // sign & send
+      const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection);
+      showToast("success", `Transaction sent: ${sig}`);
+
+      // confirm
+      try {
+        await confirmBet({
+          market_pda: market_pda,
+          side: selectedSide,
+          amount_ui: amount,
+          signature: sig,
+        });
+      } catch (e) {
+        console.warn("confirm failed", e);
+      }
+
+      setBetAmount("");
+      setSelectedSide(null);
+      showToast("success", "Bet placed!");
+
+      const fresh = await getMarket(market_pda);
+      setMarket(fresh);
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      if (/blockhash/i.test(msg)) {
+        showToast("danger", "Transaction expired. Please try again.");
+      } else {
+        showToast("danger", "Failed to place bet.");
+      }
+      console.error(err);
+    } finally {
+      setIsPlacingBet(false);
+    }
+  }, [selectedSide, betAmount, market, numericBalance, wallet, connection, market_pda]);
+
   useEffect(() => {
     let alive = true;
       (async () => {
         try {
           setIsLoading(true);
           setError(null);
-          const data = await getMarket(id);
+          const data = await getMarket(market_pda);
           if (alive) setMarket(data);
         } catch (e: any) {
           if (alive) setError(e?.message ?? "Failed to load market");
@@ -435,17 +269,17 @@ export default function MarketPage() {
         }
       })();
       return () => { alive = false; };
-  }, [id]);
+  }, [market_pda]);
 
-  const handleBet = useCallback(async () => {
-    if (!selectedSide || !betAmount) return
-    setIsPlacingBet(true)
+  // const handleBet = useCallback(async () => {
+  //   if (!selectedSide || !betAmount) return
+  //   setIsPlacingBet(true)
 
-    console.log(`Betting ${betAmount} SOL on ${selectedSide.toUpperCase()}`)
-    setIsPlacingBet(false)
-    setBetAmount("")
-    setSelectedSide(null)
-  }, [selectedSide, betAmount])
+  //   console.log(`Betting ${betAmount} SOL on ${selectedSide.toUpperCase()}`)
+  //   setIsPlacingBet(false)
+  //   setBetAmount("")
+  //   setSelectedSide(null)
+  // }, [selectedSide, betAmount])
 
   const handleQuickAmount = useCallback((amount: number) => {
     setBetAmount(amount.toString())
@@ -595,18 +429,21 @@ export default function MarketPage() {
       </div>
     );
   }
-  const onAmountChange = (v: string) => {
-    const n = Number.parseFloat(v);
-    if (!Number.isFinite(n) || n < 0) return setBetAmount("");
-    setBetAmount(n.toFixed(2));
-  };
+
+  const handleBlur = () => {
+    const n = parseFloat(betAmount.replace(",", "."))
+    if (!Number.isFinite(n) || n <= 0) return setBetAmount("")
+    const clamped = Math.min(n, numericBalance)
+    setBetAmount(clamped.toFixed(2))
+  }
 
   const statusLabel = { open: "Active", locked: "Locked", settled: "Settled", void: "Void" }[market.status];
   const canPlace =
     !!selectedSide &&
     !!betAmount &&
-    Number.parseFloat(betAmount) <= walletBalance &&
+    Number.parseFloat(betAmount) <= numericBalance &&
     !isPlacingBet;
+    
   return (
     <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
       <div className="absolute inset-0 radial-glow"></div>
@@ -617,7 +454,7 @@ export default function MarketPage() {
         <div className="space-y-4">
           <div className="flex items-center space-x-2">
             <Badge variant="secondary" className="bg-purple-600/20 text-purple-500 border-purple-500/30">
-              {market.category}
+              {market.category.charAt(0).toUpperCase() + market.category.slice(1)}
             </Badge>
             <Badge variant="outline" className="glass">
               <Clock className="w-3 h-3 mr-1" />
@@ -646,15 +483,11 @@ export default function MarketPage() {
               />
             </div>
 
-            {isAuthorized && (
+            {isAuthorized && market.status == "open" && (
               <Card className="glass glow-cyan">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Place Your Bet</span>
-                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                      <Wallet className="w-4 h-4" />
-                      <span>{walletBalance.toFixed(2)} SOL</span>
-                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -663,7 +496,7 @@ export default function MarketPage() {
                       variant={selectedSide === "yes" ? "default" : "outline"}
                       className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
                         selectedSide === "yes"
-                          ? "bg-emerald-600 hover:bg-emerald-700 text-white glow-green scale-105"
+                          ? "bg-emerald-600/80 hover:bg-emerald-800 text-white glow-green scale-105"
                           : "glass hover:bg-emerald-600/20 hover:border-emerald-500/50"
                       }`}
                       onClick={() => setSelectedSide("yes")}
@@ -675,7 +508,7 @@ export default function MarketPage() {
                       variant={selectedSide === "no" ? "default" : "outline"}
                       className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
                         selectedSide === "no"
-                          ? "bg-rose-600 hover:bg-rose-700 text-white glow scale-105"
+                          ? "bg-rose-600/80 hover:bg-rose-800 text-white glow scale-105"
                           : "glass hover:bg-rose-600/20 hover:border-rose-500/50"
                       }`}
                       onClick={() => setSelectedSide("no")}
@@ -687,11 +520,11 @@ export default function MarketPage() {
 
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="bet-amount">Amount (SOL)</Label>
+                      <Label htmlFor="bet-amount">Amount (USDC)</Label>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setBetAmount(walletBalance.toFixed(2))}
+                        onClick={() => setBetAmount(numericBalance.toFixed(2))}
                         className="text-xs text-muted-foreground hover:text-foreground"
                       >
                         MAX
@@ -704,11 +537,13 @@ export default function MarketPage() {
                       inputMode="decimal"
                       placeholder="0.00"
                       value={betAmount}
-                      onChange={(e) => onAmountChange(e.target.value)}
+                      // onChange={(e) => onAmountChange(e.target.value)}
+                      onChange={(e) => setBetAmount(e.target.value)}
                       className="glass text-lg h-12"
                       min="0"
-                      max={walletBalance}
+                      max={numericBalance}
                       step="0.01"
+                      onBlur={handleBlur}
                     />
 
                     <div className="flex space-x-2">
@@ -719,14 +554,14 @@ export default function MarketPage() {
                           size="sm"
                           onClick={() => handleQuickAmount(amount)}
                           className="glass cursor-pointer hover:bg-accent/20 flex-1"
-                          disabled={amount > walletBalance}
+                          disabled={amount > numericBalance}
                         >
-                          {amount} SOL
+                          {amount} USDC
                         </Button>
                       ))}
                     </div>
 
-                    {betAmount && Number.parseFloat(betAmount) > walletBalance && (
+                    {betAmount && Number.parseFloat(betAmount) > numericBalance && (
                       <div className="flex items-center space-x-2 text-red-400 text-sm">
                         <AlertTriangle className="w-4 h-4" />
                         <span>Insufficient balance</span>
@@ -734,7 +569,7 @@ export default function MarketPage() {
                     )}
                   </div>
 
-                  {selectedSide && betAmount && payout && Number.parseFloat(betAmount) <= walletBalance && (
+                  {selectedSide && betAmount && payout && Number.parseFloat(betAmount) <= numericBalance && (
                     <div className="glass p-6 rounded-lg space-y-4 border border-accent/20 bg-transparent">
                       <h4 className="font-semibold text-lg">Order Summary</h4>
 
@@ -789,13 +624,17 @@ export default function MarketPage() {
                       )}
                     </div>
                   )}
-
-                  <Button
+                  <CustomButton
                     onClick={handleBet}
                     disabled={!canPlace}
-                    className="w-full cursor-pointer h-14 text-lg gradient-bg glow hover:glow-green transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    variant="expandIcon"
+                    Icon={ArrowRight}
+                    iconPlacement="right"
+                    className={cn(
+                      "h-fit w-full h-14 cursor-pointer rounded-lg bg-accent text-foreground hover:bg-accent/95",
+                    )}
                   >
-                    {isPlacingBet ? (
+                     {isPlacingBet ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                         <span>Placing Bet...</span>
@@ -806,7 +645,7 @@ export default function MarketPage() {
                         Place Bet
                       </>
                     )}
-                  </Button>
+                  </CustomButton>
                 </CardContent>
               </Card>
             )}
@@ -967,7 +806,41 @@ export default function MarketPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Creator</span>
-                      <span className="font-mono text-sm">{market.creator}</span>
+                      <TooltipProvider delayDuration={100}>
+                        <Tooltip_>
+                           <TooltipTrigger asChild>
+                            <span className="font-mono text-sm cursor-pointer hover:underline">
+                              {market.creator.length > 10
+                                ? `${market.creator.slice(0, 10)}...${market.creator.slice(-10)}`
+                                : market.creator}
+                            </span>
+                           </TooltipTrigger>
+                           <TooltipContent className="p-2 bg-card border border-border">
+                              <div className="flex flex-col gap-2 min-w-[200px]">
+                                <div className="flex gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => {navigator.clipboard.writeText(market.creator); setCopied(true); setTimeout(() => setCopied(false), 2000)}} className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent">
+                                    {copied ? (
+                                      <>
+                                        <Check className="w-3 h-3 mr-1" />
+                                        Copied
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3 h-3 mr-1" />
+                                        Copy
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => router.push(`/profile/${market.creator}`)} className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent">
+                                    <User className="w-3 h-3 mr-1" />
+                                    Profile
+                                  </Button>
+                                </div>
+                              </div>
+                            </TooltipContent>
+                        </Tooltip_>
+                      </TooltipProvider>
+
                     </div>
                   </TabsContent>
 

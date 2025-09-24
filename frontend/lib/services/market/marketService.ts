@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { RawCreateRespSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, ListMarket, MarketSchema, MarketResponse } from "@/lib/types";
+import { RawCreateRespSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse } from "@/lib/types";
 
 export async function createMarket(
   formData: CreateMarketFormData

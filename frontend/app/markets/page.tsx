@@ -91,8 +91,6 @@ const MarketCard = ({ market, index, renderKey }: { market: ListMarket; index: n
               year: "numeric",
               month: "short",
               day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
             })}
           </div>
         </div>
@@ -105,11 +103,11 @@ const MarketCard = ({ market, index, renderKey }: { market: ListMarket; index: n
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
             <div className="text-green-400 text-xs font-medium mb-1">YES</div>
-            <div className="text-white font-bold">${(market.yesPrice * 100).toFixed(0)}¢</div>
+            <div className="text-white font-bold">{(market.yesPrice * 100).toFixed(0)}¢</div>
           </div>
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
             <div className="text-red-400 text-xs font-medium mb-1">NO</div>
-            <div className="text-white font-bold">${(market.noPrice * 100).toFixed(0)}¢</div>
+            <div className="text-white font-bold">{(market.noPrice * 100).toFixed(0)}¢</div>
           </div>
         </div>
 

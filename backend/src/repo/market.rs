@@ -52,6 +52,15 @@ pub struct MarketRow {
     pub resolver_pubkey: Option<String>,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct MarketViewRow {
+    pub id: Uuid,
+    pub market_pda: String,
+    pub status: String,
+    pub price_feed_account: String,
+    pub end_date_utc: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 pub struct MarketsPage {
     pub items: Vec<MarketRowFetch>,
     pub next_cursor: Option<String>,
@@ -308,6 +317,24 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> Result<Option<M
             FROM market_view
             WHERE market_pda = $1
         "#,
+    )
+    .bind(market_pda)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn fetch_by_pda(
+    pool: &PgPool,
+    market_pda: &str,
+) -> anyhow::Result<Option<MarketViewRow>> {
+    let row = sqlx::query_as::<_, MarketViewRow>(
+        r#"
+        SELECT id, market_pda, status, price_feed_account, end_date_utc
+        FROM market_view
+        WHERE market_pda = $1
+        LIMIT 1
+        "#
     )
     .bind(market_pda)
     .fetch_optional(pool)

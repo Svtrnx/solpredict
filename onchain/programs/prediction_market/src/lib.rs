@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::{AssociatedToken},
+    associated_token::AssociatedToken,
     token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
 };
 use mpl_token_metadata::{
     instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2, ID as TOKEN_METADATA_PROGRAM_ID,
 };
-use pyth_sdk_solana::state::SolanaPriceAccount;
+// use pyth_sdk_solana::state::SolanaPriceAccount;
 
 declare_id!("HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ"); // Program ID
 

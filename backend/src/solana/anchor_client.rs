@@ -10,15 +10,18 @@ use anchor_client::solana_sdk::{
     transaction::Transaction,
 };
 use anchor_client::{Client, Cluster, Program};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose};
 use bincode::{config::standard, serde::encode_to_vec};
 use prediction_market_program as onchain;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use spl_associated_token_account::{
     ID as ASSOCIATED_TOKEN_PROGRAM_ID, get_associated_token_address,
 };
 use spl_token::ID as TOKEN_PROGRAM_ID;
 use std::sync::Arc;
+use std::{str::FromStr, time::Duration};
+use tokio::time::sleep;
 
 pub struct AnchorCtx {
     pub client: Client<Arc<Keypair>>,
@@ -41,6 +44,42 @@ fn pda_market(user: &Pubkey, feed: &Pubkey, end_ts: i64) -> (Pubkey, u8) {
         ],
         &onchain::ID,
     )
+}
+
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
+const MAX_ATTEMPTS: usize = 30;
+
+pub async fn wait_for_confirmation(sig_str: &str, rpc_url: &str) -> Result<()> {
+    let sig = Signature::from_str(sig_str).context("invalid signature format")?;
+    let rpc = RpcClient::new(rpc_url.to_string());
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let statuses = rpc
+            .get_signature_statuses(&[sig])
+            .await
+            .context("failed to fetch signature statuses")?;
+
+        if let Some(Some(status)) = statuses.value.into_iter().next() {
+            if status.err.is_none() {
+                return Ok(());
+            } else {
+                return Err(anyhow::anyhow!(
+                    "transaction {} failed: {:?}",
+                    sig_str,
+                    status.err
+                ));
+            }
+        }
+
+        sleep(POLL_INTERVAL).await;
+    }
+
+    Err(anyhow::anyhow!(
+        "transaction {} not confirmed after {} attempts (~{}s)",
+        sig_str,
+        MAX_ATTEMPTS,
+        POLL_INTERVAL.as_secs_f32() * MAX_ATTEMPTS as f32
+    ))
 }
 
 fn pda_escrow_auth(market: &Pubkey, side: &[u8]) -> (Pubkey, u8) {
@@ -224,8 +263,69 @@ pub fn create_market(
     encode_unsigned_tx(&tx)
 }
 
-// ==== Market: create + optional seed in one transaction ====
+// ==== Bet: create ====
 
+pub fn build_place_bet(
+    ctx: &AnchorCtx,
+    user_pubkey: Pubkey,
+    market_pda: Pubkey,
+    feed_pubkey: Pubkey,
+    side_yes: bool,
+    amount_1e6: u64,
+) -> anyhow::Result<String> {
+    use spl_associated_token_account::get_associated_token_address;
+    let program = program(ctx)?;
+    let mint = onchain::USDC_MINT;
+
+    // PDAs/ATAs
+    let (escrow_yes, _) = pda_escrow_auth(&market_pda, b"yes");
+    let (escrow_no, _) = pda_escrow_auth(&market_pda, b"no");
+    let vault_yes = get_associated_token_address(&escrow_yes, &mint);
+    let vault_no = get_associated_token_address(&escrow_no, &mint);
+    let user_ata = get_associated_token_address(&user_pubkey, &mint);
+    let (position_pda, _) = pda_position(&market_pda, &user_pubkey);
+
+    let side = if side_yes {
+        onchain::Side::Yes
+    } else {
+        onchain::Side::No
+    };
+
+    let ixs = program
+        .request()
+        .accounts(onchain::accounts::PlaceBet {
+            user: user_pubkey,
+            market: market_pda,
+            feed: feed_pubkey,
+            mint,
+            user_ata,
+            position: position_pda,
+            escrow_authority_yes: escrow_yes,
+            escrow_authority_no: escrow_no,
+            escrow_vault_yes: vault_yes,
+            escrow_vault_no: vault_no,
+            token_program: spl_token::ID,
+            associated_token_program: spl_associated_token_account::ID,
+            system_program: anchor_client::solana_sdk::system_program::ID,
+            rent: anchor_client::solana_sdk::sysvar::rent::ID,
+        })
+        .args(onchain::instruction::PlaceBet {
+            side,
+            amount: amount_1e6,
+        })
+        .instructions()?;
+
+    let bh = latest_blockhash(&program)?;
+    let mut tx = anchor_client::solana_sdk::transaction::Transaction::new_with_payer(
+        &ixs,
+        Some(&user_pubkey),
+    );
+    tx.message.recent_blockhash = bh;
+
+    encode_unsigned_tx(&tx)
+}
+
+// ==== Market: create + optional seed in one transaction ====
 pub fn build_create_and_seed(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,

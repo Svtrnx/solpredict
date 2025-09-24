@@ -1,32 +1,42 @@
+use crate::ai::parse::extract_last_probability;
 use axum::http::StatusCode;
-use impit::cookie::Jar;
-use impit::emulation::Browser;
-use impit::impit::Impit;
+use cookie::Cookie;
+use reqwest::{Client, Url, header};
+use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::ai::parse::extract_last_probability;
+fn make_client_with_cookies() -> (Client, Arc<CookieStoreMutex>) {
+    let jar = Arc::new(CookieStoreMutex::new(CookieStore::default()));
+    let client = Client::builder()
+        .cookie_provider(jar.clone())
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        .build()
+        .expect("reqwest client");
+    (client, jar)
+}
+
+fn http_err<E: std::fmt::Display>(code: StatusCode, e: E) -> (StatusCode, String) {
+    (code, e.to_string())
+}
 
 pub async fn fetch_probability() -> Result<f64, (StatusCode, String)> {
-    let client = Impit::<Jar>::builder()
-        .with_browser(Browser::Chrome)
-        .build();
+    let client = Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| http_err(StatusCode::INTERNAL_SERVER_ERROR, format!("client build: {e}")))?;
 
-    let resp = client
-        .get("https://www.perplexity.ai/".to_string(), None, None)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("first get failed: {e}")))?;
-
-    let visitor_id = resp
-        .cookies()
-        .find(|c| c.name() == "pplx.visitor-id")
-        .map(|c| c.value().to_string())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let visitor_id = Uuid::new_v4().to_string();
 
     let query = "Will Ethereum reach $5,000 by end of 2025?";
-    let question = concat!("You are a financial reasoning assistant. Task: ", "");
     let question = format!(
-        "{question}{q} Step 1: Collect and summarize recent expert predictions, on-chain data, and macroeconomic indicators. Step 2: Compare optimistic and pessimistic scenarios. Step 3: Provide a balanced conclusion. Output strictly in this format (one line only): RESULT:{{probability: <number>%}} Rules: - Do not output analysis text, only the final RESULT line. - If uncertain, still return your best estimate.",
+        "You are a financial reasoning assistant. Task: {q} \
+         Step 1: Collect and summarize recent expert predictions, on-chain data, and macroeconomic indicators. \
+         Step 2: Compare optimistic and pessimistic scenarios. \
+         Step 3: Provide a balanced conclusion. \
+         Output strictly in this format (one line only): RESULT:{{probability: <number>%}} \
+         Rules: - Do not output analysis text, only the final RESULT line. - If uncertain, still return your best estimate.",
         q = query
     );
 
@@ -71,35 +81,35 @@ pub async fn fetch_probability() -> Result<f64, (StatusCode, String)> {
         }
     });
 
-    let body_bytes = serde_json::to_vec(&payload).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("serialize json failed: {e}"),
-        )
-    })?;
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::COOKIE,
+        header::HeaderValue::from_str(&format!("pplx.visitor-id={visitor_id}; Path=/; Domain=.perplexity.ai"))
+            .map_err(|e| http_err(StatusCode::INTERNAL_SERVER_ERROR, format!("cookie hdr: {e}")))?,
+    );
+    headers.insert(header::ACCEPT, header::HeaderValue::from_static("text/event-stream"));
+    headers.insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/json"));
 
     let resp = client
-        .post(
-            "https://www.perplexity.ai/rest/sse/perplexity_ask".to_string(),
-            Some(body_bytes.into()),
-            None,
-        )
+        .post("https://www.perplexity.ai/rest/sse/perplexity_ask")
+        .headers(headers)
+        .json(&payload)
+        .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("second get failed: {e}")))?;
+        .map_err(|e| http_err(StatusCode::BAD_GATEWAY, format!("post failed: {e}")))?;
 
-    tracing::info!("perplexity_ask response: {}", resp.status());
+    let status = resp.status();
 
     let body = resp
         .text()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("read body failed: {e}")))?;
+        .map_err(|e| http_err(StatusCode::BAD_GATEWAY, format!("read body failed: {e}")))?;
+
+    tracing::info!("perplexity_ask response: {}", status);
 
     if let Some((_raw, _json_obj, prob)) = extract_last_probability(&body) {
         Ok(prob)
     } else {
-        Err((
-            StatusCode::BAD_GATEWAY,
-            "Could not find probability in the answer".into(),
-        ))
+        Err((StatusCode::BAD_GATEWAY, "Could not find probability in the answer".into()))
     }
 }

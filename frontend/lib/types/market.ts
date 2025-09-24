@@ -93,3 +93,10 @@ export const MarketSchema = z.object({
   status: z.enum(["open", "locked", "settled", "void"]),
 });
 export type Market = z.infer<typeof MarketSchema>;
+
+export interface TimeLeft {
+  days: number
+  hours: number
+  minutes: number
+  seconds: number
+}

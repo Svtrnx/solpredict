@@ -26,6 +26,35 @@ export const BetDataSchema = z.object({
   resolvedDate: z.string().nullable().optional(),
 })
 
+// --- prepare ---
+export const PrepareBetSchema = z.object({
+  market_pda: z.string().min(32).max(64),
+  side: z.enum(["yes", "no"]),
+  amount_ui: z.number().positive().min(0.000001),
+});
+
+export type PrepareBetPayload = z.infer<typeof PrepareBetSchema>;
+
+export const PrepareBetResponseSchema = z.object({
+  ok: z.boolean(),
+  tx_base64: z.string(),
+});
+
+// --- confirm ---
+export const ConfirmBetSchema = PrepareBetSchema.extend({
+  signature: z.string().min(80).max(120),
+});
+
+export type ConfirmBetPayload = z.infer<typeof ConfirmBetSchema>;
+
+export const ConfirmBetResponseSchema = z.object({
+  ok: z.boolean(),
+  market_id: z.string().uuid(),
+  bet_id: z.number(),
+  signature: z.string(),
+});
+
+
 export type BetData = z.infer<typeof BetDataSchema>
 
 export type BetsKind = "active" | "history";

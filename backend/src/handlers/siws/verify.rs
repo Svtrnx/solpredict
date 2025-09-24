@@ -101,7 +101,7 @@ pub async fn verify(
 
     // Build JWT
     let iat = now.unix_timestamp() as usize;
-    let exp = (now + Duration::hours(24)).unix_timestamp() as usize;
+    let exp = (now + Duration::hours(24 * 3)).unix_timestamp() as usize;
     let claims = Claims {
         sub: user_id.to_string(),
         wallet: address,

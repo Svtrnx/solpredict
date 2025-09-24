@@ -1,6 +1,7 @@
 pub mod middleware;
 pub mod telemetry;
 pub mod handlers;
+pub mod usecases;
 pub mod config;
 pub mod routes;
 pub mod solana;

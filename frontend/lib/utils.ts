@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { TimeLeft } from "./types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -91,3 +92,14 @@ export const fmtPercent = (p: number, digits = 1) =>
   `${(p * 100).toFixed(digits)}%`;
 
 export const fmtCents = (p: number) => `${(p * 100).toFixed(0)}¢`;
+
+export function diff(endAt: string): TimeLeft {
+  const end = new Date(endAt).getTime();
+  const now = Date.now();
+  const d = Math.max(0, end - now);
+  const days = Math.floor(d / 86400000);
+  const hours = Math.floor((d % 86400000) / 3600000);
+  const minutes = Math.floor((d % 3600000) / 60000);
+  const seconds = Math.floor((d % 60000) / 1000);
+  return { days, hours, minutes, seconds };
+}
