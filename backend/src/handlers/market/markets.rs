@@ -49,6 +49,7 @@ pub struct MarketsQuery {
     limit: Option<u32>,          // default 15
     cursor: Option<String>,      // cursor for keyset
     category: Option<String>,    // filter by category
+    sort: Option<String>,        // sort
 }
 
 pub const DATETIME_QUESTION: &str = "%b %d, %Y UTC";
@@ -75,6 +76,7 @@ pub async fn list(
         limit,
         q.cursor.as_deref(),
         q.category.as_deref(),
+        q.sort.as_deref(),
     ).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;
 
     let items = page.items.into_iter().map(|m| MarketDto{

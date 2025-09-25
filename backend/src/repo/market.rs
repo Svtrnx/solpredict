@@ -1,10 +1,10 @@
-use base64::{engine::general_purpose, Engine as _};
-use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row};
 use anyhow::Result;
+use base64::{Engine as _, engine::general_purpose};
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Row, postgres::PgRow};
 use uuid::Uuid;
 
-use crate::handlers::market::types::{Comparator, MarketType, MarketCategory, CreateMarketRequest};
+use crate::handlers::market::types::{Comparator, CreateMarketRequest, MarketCategory, MarketType};
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct MarketRowInsert {
@@ -180,79 +180,114 @@ pub async fn fetch_markets_page(
     limit: i64,
     cursor: Option<&str>,
     category: Option<&str>,
+    sort: Option<&str>,
 ) -> Result<MarketsPage> {
-    // decoding the cursor "{ts}|{uuid}"
-    let (cur_ts, cur_id) = if let Some(c) = cursor {
+    // Normalize sort key to a safe enum
+    enum SortKey {
+        Updated,
+        Volume,
+        Participants,
+        Ending,
+    }
+    let sk = match sort.map(|s| s.to_ascii_lowercase()) {
+        Some(ref s) if s == "volume" => SortKey::Volume,
+        Some(ref s) if s == "participants" => SortKey::Participants,
+        Some(ref s) if s == "ending" => SortKey::Ending,
+        _ => SortKey::Updated,
+    };
+
+    // Column, direction and comparison operator for keyset pagination
+    struct Plan {
+        col: &'static str,
+        asc: bool,
+        cmp: &'static str,
+    }
+    let plan = match sk {
+        SortKey::Updated => Plan {
+            col: "updated_at",
+            asc: false,
+            cmp: "<",
+        },
+        SortKey::Volume => Plan {
+            col: "total_volume_1e6",
+            asc: false,
+            cmp: "<",
+        },
+        SortKey::Participants => Plan {
+            col: "participants",
+            asc: false,
+            cmp: "<",
+        },
+        SortKey::Ending => Plan {
+            col: "end_date_utc",
+            asc: true,
+            cmp: ">",
+        },
+    };
+    let dir = if plan.asc { "ASC" } else { "DESC" };
+
+    // Decode cursor "{key}|{uuid}" and parse key based on current sort
+    enum CurVal {
+        Dt(DateTime<Utc>),
+        I64(i64),
+    }
+    let (cur_val, cur_id): (Option<CurVal>, Option<Uuid>) = if let Some(c) = cursor {
         let raw = general_purpose::STANDARD.decode(c)?;
         let s = String::from_utf8(raw)?;
-        let (ts_s, id_s) = s.split_once('|').unwrap_or(("", ""));
-        let ts = ts_s.parse::<DateTime<Utc>>().ok();
-        let id = Uuid::parse_str(id_s).ok();
-        (ts, id)
+        let (a, b) = s.split_once('|').unwrap_or(("", ""));
+        let id = Uuid::parse_str(b).ok();
+        let v = match sk {
+            SortKey::Updated | SortKey::Ending => a.parse::<DateTime<Utc>>().ok().map(CurVal::Dt),
+            SortKey::Volume | SortKey::Participants => a.parse::<i64>().ok().map(CurVal::I64),
+        };
+        (v, id)
     } else {
         (None, None)
     };
 
-    let mut sql = String::from(
+    // Build query with safe bindings
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         r#"
-            SELECT
-            id, market_pda, category, total_volume_1e6, participants, price_yes_bp, end_date_utc, updated_at,
-            symbol, market_type, comparator, bound_lo_1e6, bound_hi_1e6
-            FROM market_view
-            WHERE 1=1
+        SELECT
+          id, market_pda, category, total_volume_1e6, participants, price_yes_bp,
+          end_date_utc, updated_at, symbol, market_type, comparator,
+          bound_lo_1e6, bound_hi_1e6
+        FROM market_view
+        WHERE 1=1
         "#,
     );
 
-    // filters
-    if category.is_some() {
-        sql.push_str(" AND category = $CAT ");
+    if let Some(cat) = category {
+        qb.push(" AND category = ").push_bind(cat);
     }
 
-    // keyset: "strictly less than" by (updated_at desc, id desc)
-    if cur_ts.is_some() && cur_id.is_some() {
-        sql.push_str(" AND (updated_at, id) < ($CUR_TS, $CUR_ID) ");
+    if let (Some(v), Some(cid)) = (&cur_val, cur_id) {
+        qb.push(" AND (")
+            .push(plan.col)
+            .push(", id) ")
+            .push(plan.cmp)
+            .push(" (");
+        match v {
+            CurVal::Dt(dt) => qb.push_bind(dt),
+            CurVal::I64(i) => qb.push_bind(i),
+        };
+        qb.push(", ").push_bind(cid).push(") ");
     }
 
-    sql.push_str(" ORDER BY updated_at DESC, id DESC LIMIT $LIM ");
+    qb.push(" ORDER BY ").push(plan.col);
 
-    let rows = if category.is_some() && cur_ts.is_some() {
-        sqlx::query(
-            &sql.replace("$CAT", "$1")
-                .replace("$CUR_TS", "$2")
-                .replace("$CUR_ID", "$3")
-                .replace("$LIM", "$4"),
-        )
-        .bind(category.unwrap())
-        .bind(cur_ts.unwrap())
-        .bind(cur_id.unwrap())
-        .bind(limit + 1) // get +1 to see if there is a continuation
-        .fetch_all(pool)
-        .await?
-    } else if category.is_some() {
-        sqlx::query(&sql.replace("$CAT", "$1").replace("$LIM", "$2"))
-            .bind(category.unwrap())
-            .bind(limit + 1)
-            .fetch_all(pool)
-            .await?
-    } else if cur_ts.is_some() {
-        sqlx::query(
-            &sql.replace("$CUR_TS", "$1")
-                .replace("$CUR_ID", "$2")
-                .replace("$LIM", "$3"),
-        )
-        .bind(cur_ts.unwrap())
-        .bind(cur_id.unwrap())
-        .bind(limit + 1)
-        .fetch_all(pool)
-        .await?
+    if plan.asc {
+        qb.push(" ASC, id ASC ");
     } else {
-        sqlx::query(&sql.replace("$LIM", "$1"))
-            .bind(limit + 1)
-            .fetch_all(pool)
-            .await?
-    };
+        qb.push(" DESC, id DESC ");
+    }
 
-    let mut out = Vec::with_capacity(rows.len());
+    qb.push(" LIMIT ").push_bind(limit + 1);
+
+    let rows: Vec<PgRow> = qb.build().fetch_all(pool).await?;
+
+    // Map rows into output
+    let mut out = Vec::with_capacity(rows.len().min(limit as usize));
     for r in rows.iter().take(limit as usize) {
         out.push(MarketRowFetch {
             id: r.try_get("id")?,
@@ -268,14 +303,19 @@ pub async fn fetch_markets_page(
             comparator: r.try_get("comparator")?,
             bound_lo_1e6: r.try_get("bound_lo_1e6")?,
             bound_hi_1e6: r.try_get("bound_hi_1e6")?,
-
         });
     }
 
-    // next cursor (if was +1)
+    // Encode next cursor using the same sort key
     let next_cursor = if rows.len() as i64 > limit {
         if let Some(last) = out.last() {
-            let s = format!("{}|{}", last.updated_at.to_rfc3339(), last.id);
+            let key_str = match sk {
+                SortKey::Updated => last.updated_at.to_rfc3339(),
+                SortKey::Ending => last.end_date_utc.to_rfc3339(),
+                SortKey::Volume => last.total_volume_1e6.to_string(),
+                SortKey::Participants => last.participants.to_string(),
+            };
+            let s = format!("{}|{}", key_str, last.id);
             Some(general_purpose::STANDARD.encode(s.as_bytes()))
         } else {
             None
@@ -289,6 +329,7 @@ pub async fn fetch_markets_page(
         next_cursor,
     })
 }
+
 pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> Result<Option<MarketRow>> {
     let row = sqlx::query_as::<_, MarketRow>(
         r#"
@@ -334,7 +375,7 @@ pub async fn fetch_by_pda(
         FROM market_view
         WHERE market_pda = $1
         LIMIT 1
-        "#
+        "#,
     )
     .bind(market_pda)
     .fetch_optional(pool)

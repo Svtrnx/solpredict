@@ -100,3 +100,6 @@ export interface TimeLeft {
   minutes: number
   seconds: number
 }
+
+export const SORTS = ["volume", "participants", "ending"] as const
+export type SortKey = typeof SORTS[number]

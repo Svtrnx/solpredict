@@ -9,28 +9,41 @@ function unwrapSignIn<T = any>(raw: T): any { const x = Array.isArray(raw) ? raw
 
 type SolanaSignInInput = { domain: string; uri?: string; statement?: string; nonce: string; version?: string; issuedAt?: string; expirationTime?: string; };
 
-export function useSiws()
-{
-  const { wallet, publicKey, connected } = useWallet();
+function buildSiwsMessage(params: Required<SolanaSignInInput> & { address: string }) {
+  const { domain, address, statement, uri, version, nonce, issuedAt, expirationTime } = params;
+  return (
+    `${domain} wants you to sign in with your Solana account:\n` +
+    `${address}\n\n` +
+    `${statement}\n\n` +
+    `URI: ${uri}\n` +
+    `Version: ${version}\n` +
+    `Nonce: ${nonce}\n` +
+    `Issued At: ${issuedAt}\n` +
+    `Expiration Time: ${expirationTime}`
+  );
+}
 
+export function useSiws() {
+  const { wallet, publicKey, connected } = useWallet();
   const inFlightRef = useRef<Promise<boolean> | null>(null);
 
-  async function signIn(): Promise<boolean>
-  {
+  async function signIn(): Promise<boolean> {
     if (!wallet) throw new Error("Wallet not connected");
-
+    if (!publicKey) {
+      if (typeof (wallet.adapter as any)?.connect === "function") {
+        await (wallet.adapter as any).connect();
+      }
+    }
     if (inFlightRef.current) return inFlightRef.current;
 
-    const p: Promise<boolean> = (async () =>
-    {
-      try
-      {
-        const { nonce, ttlSec, ttl, ttl_sec } = await getNonce();
+    const p: Promise<boolean> = (async () => {
+      try {
+        const { nonce, ttl, ttlSec, ttl_sec } = await getNonce();
         const ttlSeconds = Number(ttl ?? ttlSec ?? ttl_sec ?? 300);
         const issuedAt = new Date().toISOString();
         const expirationTime = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
-        const input = {
+        const input: Required<SolanaSignInInput> = {
           domain: window.location.host,
           uri: window.location.origin,
           statement: "Sign in to SolPredict.",
@@ -40,43 +53,80 @@ export function useSiws()
           expirationTime,
         };
 
+        // --- Wallet Standard ---
         // @ts-ignore
         const feature = (wallet.adapter as any)?.wallet?.features?.["solana:signIn"];
-        if (!feature || typeof feature.signIn !== "function")
-        {
-          throw new Error("Wallet does not expose Wallet Standard `solana:signIn` feature");
-        }
-        if (!connected && typeof (wallet.adapter as any)?.connect === "function")
-        {
-          await (wallet.adapter as any).connect();
-        }
+        if (feature && typeof feature.signIn === "function") {
+          if (!connected && typeof (wallet.adapter as any)?.connect === "function") {
+            await (wallet.adapter as any).connect();
+          }
+          const raw = await feature.signIn(input);
+          const out = unwrapSignIn(raw);
 
-        const raw = await feature.signIn(input);
-        const out = unwrapSignIn(raw);
-
-        const pk =
-          out?.account?.publicKey
-            ? asU8(out.account.publicKey as BytesLike)
-            : publicKey
+          const pkBytes =
+            out?.account?.publicKey
+              ? asU8(out.account.publicKey as BytesLike)
+              : publicKey
               ? new Uint8Array(publicKey.toBytes())
               : null;
 
-        if (!pk || !out?.signedMessage || !out?.signature)
-        {
-          throw new Error("Wallet returned incomplete signIn output");
+          if (!pkBytes || !out?.signedMessage || !out?.signature) {
+            throw new Error("Wallet returned incomplete signIn output");
+          }
+
+          const payload = {
+            account: { publicKey: Array.from(pkBytes) },
+            signedMessage: Array.from(asU8(out.signedMessage as BytesLike)),
+            signature: Array.from(asU8(out.signature as BytesLike)),
+          };
+          await verifySiws(payload);
+          return true;
         }
 
-        const payload = {
-          account: { publicKey: Array.from(asU8(pk)) },
-          signedMessage: Array.from(asU8(out.signedMessage as BytesLike)),
-          signature: Array.from(asU8(out.signature as BytesLike)),
-        };
+        // --- Fallback for Solflare and other without `solana:signIn` ---
+        const address = (publicKey ?? (wallet.adapter as any)?.publicKey)?.toBase58?.();
+        if (!address) throw new Error("No public key available");
 
-        await verifySiws(payload);
-        return true; 
-      } finally
-      {
-        inFlightRef.current = null; 
+        const messageStr = buildSiwsMessage({ ...input, address });
+        const messageBytes = new TextEncoder().encode(messageStr);
+
+        // New Wallet Standard
+        // @ts-ignore
+        const stdSign = (wallet.adapter as any)?.wallet?.features?.["standard:signMessage"]?.signMessage;
+        if (typeof stdSign === "function") {
+          const res = unwrapSignIn(await stdSign({ message: messageBytes }));
+          const sig = asU8(res?.signature ?? res);
+          const pkBytes = new Uint8Array((publicKey as any).toBytes());
+
+          await verifySiws({
+            account: { publicKey: Array.from(pkBytes) },
+            signedMessage: Array.from(messageBytes),
+            signature: Array.from(sig),
+          });
+          return true;
+        }
+
+        // classical adapter method
+        if (typeof (wallet.adapter as any)?.signMessage === "function") {
+          if (!connected && typeof (wallet.adapter as any)?.connect === "function") {
+            await (wallet.adapter as any).connect();
+          }
+          const sig: Uint8Array = await (wallet.adapter as any).signMessage(messageBytes);
+          const pkBytes = new Uint8Array((publicKey as any).toBytes());
+
+          await verifySiws({
+            account: { publicKey: Array.from(pkBytes) },
+            signedMessage: Array.from(messageBytes),
+            signature: Array.from(sig),
+          });
+          return true;
+        }
+
+        throw new Error(
+          "Wallet does not support `solana:signIn` or message signing. Try Phantom or enable signMessage."
+        );
+      } finally {
+        inFlightRef.current = null;
       }
     })();
 

@@ -10,6 +10,7 @@ use std::{env, net::SocketAddr};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    
     // Init logging
     telemetry::init();
 

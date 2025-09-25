@@ -2,6 +2,15 @@ import axios from "axios";
 
 import { RawCreateRespSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse } from "@/lib/types";
 
+export type MarketsListParams = {
+  limit?: number
+  cursor?: string | null
+  category?: string
+  q?: string
+  sort?: "volume" | "participants" | "ending"
+  signal?: AbortSignal
+}
+
 export async function createMarket(
   formData: CreateMarketFormData
 	): Promise<CreateMarketResponse> {
@@ -26,7 +35,6 @@ export async function createMarket(
 	}
 }
 
-
 export async function confirmMarket(
 	create: CreateMarketFormData,
 	marketId: string,
@@ -45,10 +53,19 @@ export async function confirmMarket(
 }
 
 
-export async function getMarketsList(): Promise<MarketResponse> {
+export async function getMarketsList(opts: MarketsListParams = {}): Promise<MarketResponse> {
   	try {
-		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
-			{ withCredentials: true }
+		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`, { 
+				withCredentials: true,
+				signal: opts.signal,
+					params: {
+					limit: opts.limit,
+					cursor: opts.cursor ?? undefined,
+					category: opts.category,
+					q: opts.q,
+					sort: opts.sort,
+				},
+			}
 		)
 		return MarketResponseSchema.parse(data)
 		} catch (error: any) {

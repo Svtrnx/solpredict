@@ -1,7 +1,8 @@
-use anyhow::Result;
+use sqlx::{PgPool, Transaction, Postgres, Row};
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Transaction, Postgres};
+use anyhow::Result;
+use uuid::Uuid;
 
 pub enum BetKind {
     Active,
@@ -129,95 +130,99 @@ pub async fn fetch_user_bets_page(
 
 pub async fn insert_bet_and_upsert_position(
     pool: &PgPool,
-    market_id: uuid::Uuid,
+    market_id: Uuid,
     user_pubkey: &str,
     side_yes: bool,
     amount_1e6: i64,
     tx_sig: &str,
-    block_time: Option<chrono::DateTime<chrono::Utc>>,
-) -> anyhow::Result<Option<i64>> {
-    let mut tx: Transaction<Postgres> = pool.begin().await?;
+    block_time: Option<DateTime<Utc>>,
+) -> anyhow::Result<i64> {
+    let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
 
-    let side_str = if side_yes { "yes" } else { "no" };
-
-    // pools before insertion
-    let (yes_before, no_before): (i64, i64) = sqlx::query_as(
-        r#"
-        SELECT
-        COALESCE( (SUM(CASE WHEN side='yes' THEN amount_1e6 ELSE 0 END))::BIGINT, 0 ) AS yes_total,
-        COALESCE( (SUM(CASE WHEN side='no'  THEN amount_1e6 ELSE 0 END))::BIGINT, 0 ) AS no_total
-        FROM market_bets
-        WHERE market_id = $1
-    "#,
+    //  Was the user a market participant prior to the current insertion?
+    let was_participant: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+              SELECT 1 FROM market_bets
+              WHERE market_id = $1 AND user_pubkey = $2
+           )"#,
     )
     .bind(market_id)
+    .bind(user_pubkey)
     .fetch_one(&mut *tx)
     .await?;
 
-    let total_before = yes_before + no_before;
-    let price_yes_bp_at_bet: i32 = if total_before > 0 {
-        (((yes_before as f64) / (total_before as f64)) * 10_000.0).round() as i32
-    } else {
-        5_000 // 50% when there is no pool (first bet/seed)
-    };
+    let side_str = if side_yes { "yes" } else { "no" };
 
-    // Idempotent bet insertion with entry price
-    let bet_id: Option<i64> = sqlx::query_scalar(
-    r#"
-        INSERT INTO market_bets
-        (market_id, user_pubkey, side, amount_1e6,
-        price_yes_bp_at_bet,
-        yes_total_before_1e6, no_total_before_1e6,
-        tx_sig, block_time)
-        VALUES ($1, $2, $3, $4,
-                $5,
-                $6, $7,
-                $8, $9)
-        ON CONFLICT (tx_sig) DO NOTHING
-        RETURNING id::BIGINT
-    "#,
+    // Impotent insertion of a bet on UNIQUE(tx_sig)
+    let row = sqlx::query(
+        r#"
+        WITH ins AS (
+          INSERT INTO market_bets (
+            market_id, user_pubkey, side, amount_1e6, tx_sig, block_time
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (tx_sig) DO NOTHING
+          RETURNING id
+        )
+        SELECT
+          EXISTS (SELECT 1 FROM ins) AS inserted_new,
+          COALESCE((SELECT id FROM ins),
+                   (SELECT id FROM market_bets WHERE tx_sig = $5)) AS bet_id
+        "#,
     )
     .bind(market_id)
     .bind(user_pubkey)
     .bind(side_str)
     .bind(amount_1e6)
-    .bind(price_yes_bp_at_bet)
-    .bind(yes_before)
-    .bind(no_before) 
     .bind(tx_sig)
     .bind(block_time)
-    .fetch_optional(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
 
-    // If it's a duplicate, leave the position alone.
-    if bet_id.is_none() {
-        tx.rollback().await?;
-        return Ok(None);
+    let inserted_new: bool = row.try_get::<bool, _>("inserted_new")?;
+    let bet_id: i64 = row.try_get::<i64, _>("bet_id")?;
+
+    // We only update the position if the insertion is truly new.
+    if inserted_new {
+        let (yes_delta, no_delta) = if side_yes { (amount_1e6, 0) } else { (0, amount_1e6) };
+
+        sqlx::query(
+            r#"
+            INSERT INTO market_positions (
+              market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim
+            )
+            VALUES ($1, $2, $3, $4, FALSE, NULL)
+            ON CONFLICT (market_id, user_pubkey) DO UPDATE
+            SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
+                no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
+            "#,
+        )
+        .bind(market_id)
+        .bind(user_pubkey)
+        .bind(yes_delta)
+        .bind(no_delta)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE market_state
+            SET
+              yes_total_1e6    = yes_total_1e6 + $2,
+              no_total_1e6     = no_total_1e6  + $3,
+              total_volume_1e6 = total_volume_1e6 + $4,
+              participants     = participants + CASE WHEN $5 THEN 1 ELSE 0 END
+            WHERE market_id = $1
+            "#,
+        )
+        .bind(market_id)
+        .bind(yes_delta)
+        .bind(no_delta)
+        .bind(amount_1e6)
+        .bind(!was_participant)
+        .execute(&mut *tx)
+        .await?;
     }
-
-    // Update of the user's aggregated position in the market
-    let (yes_delta, no_delta) = if side_yes {
-        (amount_1e6, 0)
-    } else {
-        (0, amount_1e6)
-    };
-
-    sqlx::query(
-        r#"
-        INSERT INTO market_positions (market_id, user_pubkey, yes_bet_1e6, no_bet_1e6)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (market_id, user_pubkey) DO UPDATE
-        SET
-          yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
-          no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
-        "#,
-    )
-    .bind(market_id)
-    .bind(user_pubkey)
-    .bind(yes_delta)
-    .bind(no_delta)
-    .execute(&mut *tx)
-    .await?;
 
     tx.commit().await?;
     Ok(bet_id)

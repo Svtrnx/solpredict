@@ -1,19 +1,19 @@
 use axum::{Json, extract::State, http::HeaderMap, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
-use validator::{Validate};
+use validator::Validate;
 
 use crate::{
-    handlers::market::types::{SeedSide, Comparator, MarketType, CreateMarketRequest},
+    error::AppError,
+    handlers::market::types::{Comparator, CreateMarketRequest, MarketType, SeedSide},
     solana::anchor_client as anchor_client_,
     state::SharedState,
-    error::AppError
 };
 
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use prediction_market_program as onchain;
-
+use std::str::FromStr;
 
 #[derive(Deserialize)]
 struct Claims {
@@ -35,8 +35,6 @@ fn map_comparator(c: Comparator) -> u8 {
         _ => 0,
     }
 }
-
-use std::str::FromStr;
 
 // Helper: hex feed id -> [u8;32]
 fn feed_id_hex_to_bytes32(s: &str) -> anyhow::Result<[u8; 32]> {

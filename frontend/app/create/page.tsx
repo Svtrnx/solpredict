@@ -215,6 +215,7 @@ export default function CreateMarketPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     try {
       e.preventDefault()
+      if (isSubmitting) return;
 
       if (!validateForm()) {
         return

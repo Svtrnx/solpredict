@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 
 import Link from "next/link"
 
@@ -18,14 +18,10 @@ import {
   Loader2,
 } from "lucide-react"
 
-import { getMarketsList } from "@/lib/services/market/marketService"
 import { useScrollPagination } from "@/hooks/use-scroll-pagination"
-import { ListMarket } from "@/lib/types"
+import { useMarketsQuery } from "@/hooks/useMarketsQuery"
+import { ListMarket, type SortKey } from "@/lib/types"
 
-interface LoadingState {
-  initial: boolean
-  more: boolean
-}
 
 const MarketCardSkeleton = () => (
   <Card className="bg-black/20 backdrop-blur-xl border-white/10">
@@ -71,8 +67,8 @@ function formatVolume(num: number): string {
   }).format(num);
 }
 
-const MarketCard = ({ market, index, renderKey }: { market: ListMarket; index: number; renderKey: number }) => (
-  <Link key={`${renderKey}-${market.id}-${index}`} href={`/market/${market.marketPda}`}>
+const MarketCard = ({ market, index }: { market: ListMarket; index: number; }) => (
+  <Link href={`/market/${market.marketPda}`}>
     <Card
       className="bg-black/20 backdrop-blur-xl border-white/10 hover:border-purple-500/50 transition-all duration-300 cursor-pointer group opacity-0 animate-fade-in"
       style={{
@@ -135,87 +131,35 @@ const MarketCard = ({ market, index, renderKey }: { market: ListMarket; index: n
 
 const categories = ["All", "Crypto"]
 
-function useStableRef<T>(value: T) {
-  const ref = useRef(value);
-  ref.current = value;
-  return ref;
-}
-
 export default function MarketsPage() {
-  const cursorRef = useRef<string|null>(null)
+  const mountedRef = useRef(true)
 
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
-  const [sortBy, setSortBy] = useState("volume")
-  const [markets, setMarkets] = useState<ListMarket[]>([])
-  const [loading, setLoading] = useState<LoadingState>({ initial: true, more: false })
-  const [currentPage, setCurrentPage] = useState(1)
-  const [hasNextPage, setHasNextPage] = useState(true)
-  const [renderKey, setRenderKey] = useState(0)
+  const [sortBy, setSortBy] = useState<SortKey>("volume")
+  
+  const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, refetch } = useMarketsQuery({
+    category: selectedCategory,
+    q: searchTerm,
+    sort: sortBy,
+    pageSize: 15,
+  })
 
-  const requestIdRef = useRef(0)
-  const mountedRef = useRef(true)
-
-  const ITEMS_PER_PAGE = 15;
-  const hasNextPageRef = useStableRef(hasNextPage);
-
-
-  const fetchMarkets = useCallback(
-    async (page: number, isReset = false) => {
-      if (!isReset && (!hasNextPageRef.current || loading.more)) return;
-      const requestId = ++requestIdRef.current;
-
-      if (isReset) {
-        setLoading((p) => ({ ...p, initial: true }));
-        setCurrentPage(1);
-        setHasNextPage(true);
-      } else {
-        setLoading((p) => ({ ...p, more: true }));
-      }
-
-      try {
-        const params = new URLSearchParams();
-        params.set("limit", String(ITEMS_PER_PAGE));
-        if (!isReset && hasNextPage && cursorRef.current) params.set("cursor", cursorRef.current);
-        if (selectedCategory !== "All") params.set("category", selectedCategory);
-
-        const json = await getMarketsList();
-
-        if (requestId !== requestIdRef.current || !mountedRef.current) return;
-
-        if (isReset) setMarkets(json.items);
-        else setMarkets((prev) => [...prev, ...json.items]);
-
-        cursorRef.current = json.nextCursor ?? null;
-        setHasNextPage(!!json.nextCursor);
-        setCurrentPage(page);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (requestId === requestIdRef.current && mountedRef.current) {
-          setLoading({ initial: false, more: false });
-        }
-      }
-    },
-    [selectedCategory]
-  );
+  useScrollPagination({
+    hasNextPage: !!hasNextPage,
+    isLoading: !!isFetchingNextPage,
+    fetchNextPage: () => fetchNextPage(),
+    threshold: 300,
+  })
 
   useEffect(() => {
-    setRenderKey((prev) => prev + 1)
-    setMarkets([])
-    setLoading({ initial: true, more: false })
-    setHasNextPage(true)
-    setCurrentPage(1)
-
-    window.scrollTo(0, 0)
-    fetchMarkets(1, true)
-  }, [selectedCategory, searchTerm, sortBy, fetchMarkets])
-
-  const loadMore = useCallback(() => {
-    if (!loading.more && hasNextPage && !loading.initial) {
-      fetchMarkets(currentPage + 1, false)
-    }
-  }, [currentPage, loading, hasNextPage, fetchMarkets])
+    refetch()
+  }, [selectedCategory, searchTerm, sortBy, refetch])
+  
+  const markets = useMemo(
+    () => (data ? data.pages.flatMap((p) => p.items) : []),
+    [data]
+  )
 
   useEffect(() => {
     mountedRef.current = true
@@ -223,13 +167,6 @@ export default function MarketsPage() {
       mountedRef.current = false
     }
   }, [])
-
-  useScrollPagination({
-    hasNextPage,
-    isLoading: loading.more,
-    fetchNextPage: loadMore,
-    threshold: 300,
-  })
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -265,12 +202,12 @@ export default function MarketsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 bg-white/5 border-white/10 text-white placeholder-gray-400"
-                  disabled={loading.initial}
+                  disabled={isLoading}
                 />
               </div>
 
               <div className="flex gap-4">
-                <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={loading.initial}>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isLoading}>
                   <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
@@ -283,7 +220,7 @@ export default function MarketsPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={sortBy} onValueChange={setSortBy} disabled={loading.initial}>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)} disabled={isLoading}>
                   <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white">
                     <SelectValue />
                   </SelectTrigger>
@@ -298,16 +235,16 @@ export default function MarketsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading.initial
+            {isLoading
               ? Array.from({ length: 15 }).map((_, index) => (
-                  <MarketCardSkeleton key={`skeleton-${renderKey}-${index}`} />
+                  <MarketCardSkeleton key={`skeleton-${index}`} />
                 ))
               : markets.map((market, index) => (
-                  <MarketCard key={`market-${market.id}`} market={market} index={index} renderKey={renderKey} />
+                  <MarketCard key={`${market.id}`} market={market} index={index} />
                 ))}
           </div>
 
-          {!loading.initial && loading.more && (
+          {!isLoading && isFetchingNextPage && (
             <div className="flex justify-center items-center py-8">
               <div className="flex items-center gap-2 text-gray-400">
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -316,14 +253,14 @@ export default function MarketsPage() {
             </div>
           )}
 
-          {!loading.initial && markets.length === 0 && (
+          {!isLoading && markets.length === 0 && (
             <div className="text-center py-12">
               <div className="text-gray-400 text-lg mb-4">No markets found</div>
               <p className="text-gray-500">Try adjusting your search or filters</p>
             </div>
           )}
 
-          {!loading.initial && !hasNextPage && markets.length > 0 && (
+          {!isLoading && !hasNextPage && markets.length > 0 && (
             <div className="text-center py-8">
               <div className="text-gray-500 text-sm">
                 Showing all {markets.length} markets for "{selectedCategory}"

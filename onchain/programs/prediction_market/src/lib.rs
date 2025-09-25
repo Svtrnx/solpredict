@@ -1,12 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::AssociatedToken,
+    associated_token::{AssociatedToken},
     token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
 };
 use mpl_token_metadata::{
     instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2, ID as TOKEN_METADATA_PROGRAM_ID,
 };
-// use pyth_sdk_solana::state::SolanaPriceAccount;
+use pyth_sdk_solana::state::SolanaPriceAccount;
 
 declare_id!("HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ"); // Program ID
 
@@ -729,10 +729,11 @@ pub struct CreateMarket<'info> {
 
     pub mint: Account<'info, Mint>,
 
-    // Two PDAs as vault owners (YES/NO)
+    /// CHECK: Two PDAs as vault owners (YES/NO)
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_YES], bump)]
     pub escrow_authority_yes: UncheckedAccount<'info>,
 
+    /// CHECK: Two PDAs as vault owners (YES/NO)
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_NO], bump)]
     pub escrow_authority_no: UncheckedAccount<'info>,
 
@@ -768,7 +769,8 @@ pub struct PlaceBet<'info> {
 
     #[account(mut, has_one = feed, constraint = !market.settled @ ErrorCode::AlreadySettled)]
     pub market: Account<'info, Market>,
-
+    
+    /// CHECK: Oracle feed account, validated in logic
     pub feed: UncheckedAccount<'info>,
     pub mint: Account<'info, Mint>,
 
@@ -780,9 +782,11 @@ pub struct PlaceBet<'info> {
     )]
     pub user_ata: Account<'info, TokenAccount>,
 
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_YES], bump)]
     pub escrow_authority_yes: UncheckedAccount<'info>,
 
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_NO], bump)]
     pub escrow_authority_no: UncheckedAccount<'info>,
 
@@ -816,6 +820,7 @@ pub struct ResolveMarket<'info> {
     )]
     pub market: Account<'info, Market>,
 
+    /// CHECK: Oracle feed account
     pub feed: UncheckedAccount<'info>,
 
     // Resolver receives the tip
@@ -839,9 +844,11 @@ pub struct ResolveMarket<'info> {
     )]
     pub treasury_ata: Account<'info, TokenAccount>,
 
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_YES], bump)]
     pub escrow_authority_yes: UncheckedAccount<'info>,
 
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_NO], bump)]
     pub escrow_authority_no: UncheckedAccount<'info>,
 
@@ -879,10 +886,12 @@ pub struct Claim<'info> {
         bump
     )]
     pub position: Account<'info, Position>,
-
+    
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_YES], bump)]
     pub escrow_authority_yes: UncheckedAccount<'info>,
 
+    /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_NO], bump)]
     pub escrow_authority_no: UncheckedAccount<'info>,
 
@@ -911,6 +920,7 @@ pub const AIRDROP_AMOUNT: u64 = 1_000 * 1_000_000;
 
 #[derive(Accounts)]
 pub struct AirdropOnce<'info> {
+    /// CHECK: Airdrop recipient
     pub user: UncheckedAccount<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -918,6 +928,7 @@ pub struct AirdropOnce<'info> {
     pub mint: Account<'info, Mint>,
 
     #[account(seeds = [b"mint-auth"], bump)]
+    /// CHECK: Mint addr
     pub mint_authority: UncheckedAccount<'info>,
     #[account(init_if_needed, payer = payer, associated_token::mint = mint, associated_token::authority = user)]
     pub user_ata: Account<'info, TokenAccount>,
@@ -942,11 +953,15 @@ pub struct SetMetadata<'info> {
     pub mint: Account<'info, Mint>,
 
     #[account(seeds = [b"mint-auth"], bump)]
+    /// CHECK: Mint addr
     pub mint_authority: UncheckedAccount<'info>,
-
+    
     #[account(mut)]
+    
+    /// CHECK: metadata account
     pub metadata: UncheckedAccount<'info>,
 
+    /// CHECK: Metaplex token metadata program
     pub token_metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,

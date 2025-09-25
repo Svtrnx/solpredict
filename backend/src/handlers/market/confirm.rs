@@ -231,7 +231,7 @@ pub async fn confirm_market(
             req.create.initial_side,
             SeedSide::Yes
         );
-        let maybe_bet_id: Option<i64> = bets_repo::insert_bet_and_upsert_position(
+        let bet_id: i64 = bets_repo::insert_bet_and_upsert_position(
             state.db.pool(),
             market_id,
             &user_pubkey.to_string(),
@@ -243,21 +243,21 @@ pub async fn confirm_market(
         .await
         .map_err(AppError::Other)?;
 
-        if let Some(bet_id) = maybe_bet_id {
+        // if let Some(bet_id) = maybe_bet_id {
             // The bet has been placed — counting the points.
-            let _awarded = points_repo::award_bet_points(
-                state.db.pool(),
-                &user_pubkey.to_string(),
-                market_id,
-                bet_id,
-                seed_amount_1e6,
-                &req.tx_sig,
-            )
-            .await
-            .map_err(AppError::Other)?;
-        } else {
-            // duplicate — the bet already exists, no points are awarded
-        }
+        let _awarded = points_repo::award_bet_points(
+            state.db.pool(),
+            &user_pubkey.to_string(),
+            market_id,
+            bet_id,
+            seed_amount_1e6,
+            &req.tx_sig,
+        )
+        .await
+        .map_err(AppError::Other)?;
+        // } else {
+        //     // duplicate — the bet already exists, no points are awarded
+        // }
     }
 
     // Initialize market_state from the on-chain account

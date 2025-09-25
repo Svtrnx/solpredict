@@ -4,6 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::db::Db;
 use crate::solana::anchor_client::AnchorCtx;
+use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
 
 // Global application state shared across all handlers
 pub struct AppState {
@@ -17,6 +18,8 @@ pub struct AppState {
     pub uri: String,
     // Database connection pool
     pub db: Db,
+
+    pub rpc: RpcClient,
     // Anchor client context for Solana program
     pub anchor: Arc<AnchorCtx>,
 }
@@ -33,12 +36,16 @@ impl AppState {
         db: Db,
         anchor: Arc<AnchorCtx>,
     ) -> SharedState {
+        let rpc_url = std::env::var("SOLANA_RPC")
+            .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string());
+        let rpc = RpcClient::new(rpc_url);
         Arc::new(AppState {
             nonces: Mutex::new(HashMap::new()),
             jwt_secret: jwt_secret.into(),
             domain: domain.into(),
             uri: uri.into(),
             db,
+            rpc,
             anchor,
         })
     }

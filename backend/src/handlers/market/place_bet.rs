@@ -10,8 +10,8 @@ use crate::{
     error::AppError, middleware::auth::CurrentUser, repo::market as market_repo,
     solana::anchor_client as anchor_client_, state::SharedState, usecases::bets,
 };
-
 use anchor_client::solana_sdk::pubkey::Pubkey;
+use anyhow::anyhow;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy)]
@@ -82,7 +82,6 @@ pub struct PreparePlaceBetResponse {
 #[derive(Debug, Serialize)]
 pub struct ConfirmPlaceBetResponse {
     pub ok: bool,
-    pub bet_id: i64,
 }
 
 #[axum::debug_handler]
@@ -104,7 +103,6 @@ pub async fn prepare_place_bet(
     else {
         return Err(AppError::NotFound);
     };
-
     if m.status != "active" {
         return Err(AppError::bad_request("market is not open"));
     }
@@ -113,19 +111,29 @@ pub async fn prepare_place_bet(
             return Err(AppError::bad_request("market already ended"));
         }
     }
-
     let feed_pk = Pubkey::from_str(&m.price_feed_account)
         .map_err(|_| AppError::bad_request("bad feed pubkey in db"))?;
 
-    let tx_b64 = anchor_client_::build_place_bet(
-        &state.anchor,
-        user_pk,
-        market_pk,
-        feed_pk,
-        side_yes,
-        amount_1e6,
-    )
-    .map_err(AppError::Other)?;
+    let ctx = state.anchor.clone();
+
+    let ixs = tokio::task::spawn_blocking(move || {
+        anchor_client_::build_place_bet_ixs(&ctx, user_pk, market_pk, feed_pk, side_yes, amount_1e6)
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!("join error: {e}")))??;
+
+    let recent_blockhash = state
+        .rpc
+        .get_latest_blockhash()
+        .await
+        .map_err(|e| AppError::Other(anyhow!(e)))?;
+
+    let mut tx =
+        anchor_client::solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&user_pk));
+    tx.message.recent_blockhash = recent_blockhash;
+
+    let tx_b64 = anchor_client_::encode_unsigned_tx(&tx).map_err(AppError::Other)?;
+    tracing::info!("5");
 
     Ok(Json(PreparePlaceBetResponse {
         ok: true,
@@ -144,7 +152,8 @@ pub async fn confirm_place_bet(
     Json(req): Json<ConfirmPlaceBetRequest>,
 ) -> Result<(StatusCode, Json<ConfirmPlaceBetResponse>), AppError> {
     let amount_1e6 = amount_ui_to_1e6(req.amount_ui)?;
-    anchor_client_::wait_for_confirmation(&state.anchor, &req.signature)
+
+    anchor_client_::wait_for_confirmation(&req.signature, &state.rpc)
         .await
         .map_err(|e| AppError::bad_request(&format!("tx not confirmed: {e}")))?;
 
@@ -155,7 +164,7 @@ pub async fn confirm_place_bet(
         return Err(AppError::NotFound);
     };
 
-    let bet_id_opt = bets::record_bet_and_points(
+    bets::record_bet_and_points(
         state.db.pool(),
         m.id,
         &user.wallet,
@@ -166,10 +175,10 @@ pub async fn confirm_place_bet(
     .await
     .map_err(AppError::Other)?;
 
-    let bet_id = bet_id_opt.ok_or_else(|| AppError::bad_request("bet not created"))?;
+    // let bet_id = bet_id_opt.ok_or_else(|| AppError::bad_request("bet not created"))?;
 
     Ok((
         StatusCode::OK,
-        Json(ConfirmPlaceBetResponse { ok: true, bet_id }),
+        Json(ConfirmPlaceBetResponse { ok: true }),
     ))
 }
