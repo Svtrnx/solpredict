@@ -111,13 +111,11 @@ pub async fn prepare_place_bet(
             return Err(AppError::bad_request("market already ended"));
         }
     }
-    let feed_pk = Pubkey::from_str(&m.price_feed_account)
-        .map_err(|_| AppError::bad_request("bad feed pubkey in db"))?;
 
     let ctx = state.anchor.clone();
 
     let ixs = tokio::task::spawn_blocking(move || {
-        anchor_client_::build_place_bet_ixs(&ctx, user_pk, market_pk, feed_pk, side_yes, amount_1e6)
+        anchor_client_::build_place_bet_ixs(&ctx, user_pk, market_pk, side_yes, amount_1e6)
     })
     .await
     .map_err(|e| AppError::Other(anyhow::anyhow!("join error: {e}")))??;

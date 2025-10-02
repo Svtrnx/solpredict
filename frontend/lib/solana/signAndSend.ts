@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
-import { Transaction, VersionedTransaction, Connection } from "@solana/web3.js";
 import { WalletContextState } from "@solana/wallet-adapter-react";
+import { Transaction, VersionedTransaction, Connection } from "@solana/web3.js";
 
 function decodeTx(b64: string): Transaction | VersionedTransaction {
   if (!b64 || typeof b64 !== "string") {

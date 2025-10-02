@@ -1,6 +1,8 @@
+
+
 import axios from "axios";
 
-import { RawCreateRespSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse } from "@/lib/types";
+import { RawCreateRespSchema, ConfirmResolveFormData, ConfirmResolveResponseSchema, PrepareMarketResolveSchema, ConfirmResolveSchema, PrepareMarketResolveResponseSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse, PrepareMarketResolveFormData, PrepareMarketResolveResponse, TConfirmResolveResponse} from "@/lib/types";
 
 export type MarketsListParams = {
   limit?: number
@@ -52,7 +54,6 @@ export async function confirmMarket(
 	);
 }
 
-
 export async function getMarketsList(opts: MarketsListParams = {}): Promise<MarketResponse> {
   	try {
 		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`, { 
@@ -91,6 +92,43 @@ export async function getMarket(market_address: string) {
   		return { ...parsed, settler: parsed.settler ?? undefined };
 	} catch (error: any) {
 		console.error("Failed to get /markets/{market_address}", error);
+		throw error
+	}
+}
+
+export async function prepareResolve(formData: PrepareMarketResolveFormData): Promise<PrepareMarketResolveResponse> {
+	try {
+		const payload = PrepareMarketResolveSchema.parse(formData)
+		const { data } = await axios.post(
+			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/build`,
+			payload,
+			{ 
+				withCredentials: true, 
+				headers: { "Content-Type": "application/json" } 
+			}
+		);
+		return PrepareMarketResolveResponseSchema.parse(data)
+
+	} catch (error: any) {
+		console.error("Failed to get /markets/resolve/build", error);
+		throw error
+	}
+}
+
+export async function confirmResolve(formData: ConfirmResolveFormData): Promise<TConfirmResolveResponse> {
+	try {
+		const payload = ConfirmResolveSchema.parse(formData)
+		const { data } = await axios.post(
+			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/confirm`,
+			payload,
+			{ 
+				withCredentials: true,
+				headers: { "Content-Type": "application/json" } 
+			}
+		);
+		return ConfirmResolveResponseSchema.parse(data);
+	} catch (error: any) {
+		console.error("Failed to get /markets/resolve/confirm", error);
 		throw error
 	}
 }

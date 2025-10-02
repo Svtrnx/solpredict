@@ -103,3 +103,30 @@ export interface TimeLeft {
 
 export const SORTS = ["volume", "participants", "ending"] as const
 export type SortKey = typeof SORTS[number]
+
+
+export const PrepareMarketResolveSchema = z.object({
+  market_pda: z.string(),
+  price_update: z.string(),
+});
+export type PrepareMarketResolveFormData = z.infer<typeof PrepareMarketResolveSchema>;
+
+export const PrepareMarketResolveResponseSchema = z.object({
+  ok: z.boolean(),
+  tx_base64: z.string(),
+  market_id: z.string(),
+  message: z.string(),
+});
+export type PrepareMarketResolveResponse = z.infer<typeof PrepareMarketResolveResponseSchema>;
+
+export const ConfirmResolveSchema = z.object({
+  market_pda: z.string(),
+  signature: z.string(),
+});
+export type ConfirmResolveFormData = z.infer<typeof ConfirmResolveSchema>;
+
+export const ConfirmResolveResponseSchema = z.object({
+  ok: z.boolean(),
+  status: z.string().optional(),
+});
+export type TConfirmResolveResponse = z.infer<typeof ConfirmResolveResponseSchema>;

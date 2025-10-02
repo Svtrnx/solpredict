@@ -9,12 +9,20 @@ use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
     cors::CorsLayer,
     timeout::TimeoutLayer,
-    trace::{self, TraceLayer},
+    trace::{
+        TraceLayer, DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse,
+    },
+    classify::ServerErrorsFailureClass,
+    request_id::{MakeRequestUuid, SetRequestIdLayer, PropagateRequestIdLayer},
 };
-use tracing::Level;
+use tracing::{Level, Span};
 
 use crate::middleware::auth::require_user;
 use crate::{handlers, state::SharedState};
+
+fn log_failure(class: ServerErrorsFailureClass, latency: Duration, _span: &Span) {
+    tracing::error!(%class, ?latency, "request failed");
+}
 
 pub fn build(state: SharedState) -> Router {
     // --- rate limit ---
@@ -57,9 +65,17 @@ pub fn build(state: SharedState) -> Router {
         .layer(TimeoutLayer::new(Duration::from_secs(10)))
         .layer(GovernorLayer::new(governor))
         .layer(cors)
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
-                .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .level(Level::INFO)
+                        // .include_headers(true),
+                )
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO))
+                .on_failure(log_failure),
         )
+        .layer(PropagateRequestIdLayer::x_request_id())
 }

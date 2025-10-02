@@ -1,12 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::{AssociatedToken},
+    associated_token::AssociatedToken,
     token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
 };
+use core::cmp::Ordering::*;
 use mpl_token_metadata::{
     instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2, ID as TOKEN_METADATA_PROGRAM_ID,
 };
-use pyth_sdk_solana::state::SolanaPriceAccount;
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 declare_id!("HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ"); // Program ID
 
@@ -188,6 +189,7 @@ pub mod prediction_market {
         bound_lo_usd_6: i64, // threshold or lower bound
         bound_hi_usd_6: i64, // 0 for threshold or upper bound
         end_ts: i64,
+        feed_id: [u8; 32],
     ) -> Result<()> {
         require_keys_eq!(ctx.accounts.mint.key(), USDC_MINT, ErrorCode::WrongMint);
 
@@ -195,7 +197,7 @@ pub mod prediction_market {
         let cfg = &ctx.accounts.config;
         let m = &mut ctx.accounts.market;
         m.authority = ctx.accounts.authority.key();
-        m.feed = ctx.accounts.price_feed.key();
+        m.feed_id = feed_id;
         m.market_type = match market_type {
             MarketType::PriceThreshold => 0,
             MarketType::PriceRange => 1,
@@ -287,19 +289,34 @@ pub mod prediction_market {
             ErrorCode::TooEarly
         );
 
-        // Read Pyth price feed
-        let pf = SolanaPriceAccount::account_info_to_feed(&ctx.accounts.feed)
+        // === Read price from Pyth Pull Oracle ===
+        let max_age: u64 = 300; // acceptable old age of an update (secs)
+
+        let price = ctx
+            .accounts
+            .price_update
+            // checks the owner, freshness, and that it is the same feed_id stored in Market
+            .get_price_no_older_than(&Clock::get()?, max_age, &m.feed_id)
             .map_err(|_| error!(ErrorCode::InvalidPriceFeed))?;
-        let p = pf.get_price_unchecked();
 
-        // Basic staleness checks
-        let now = Clock::get()?.unix_timestamp;
-        let max_age: i64 = 300;
-        require!(now >= p.publish_time, ErrorCode::StalePrice);
-        require!(now - p.publish_time <= max_age, ErrorCode::StalePrice);
+        // Deadline policy: no later than end_ts
+        let max_post_lag: i64 = 86_400; // 24 hours
+        let pt = price.publish_time;    // i64
+        require!(pt >= m.end_ts, ErrorCode::StalePrice);
+        require!(pt - m.end_ts <= max_post_lag, ErrorCode::StalePrice);
 
-        let price_1e6 = price_to_usd_1e6(p.price, p.expo)?;
+        // Conversion Pyth (price * 10^exponent) -> 1e6: USDC like scale
+        let price_1e6 = price_to_usd_1e6_from_pyth(price.price, price.exponent)?;
         m.resolved_price_1e6 = price_1e6;
+        
+        msg!(
+            "[RESOLVE] feed={:?} publish_time={} raw_price={} expo={} -> resolved_price_1e6={}",
+            &m.feed_id,
+            price.publish_time,
+            price.price,
+            price.exponent,
+            price_1e6
+        );
 
         // Evaluate market condition (YES means condition holds)
         let yes_is_true = match m.market_type {
@@ -597,7 +614,8 @@ impl Config {
 #[account]
 pub struct Market {
     pub authority: Pubkey,
-    pub feed: Pubkey,
+    pub feed_id: [u8; 32],
+    // pub feed: Pubkey,
     pub market_type: u8, // 0=Threshold, 1=Range
     pub comparator: u8,  // 0=>,1=<,2=>=,3=<= (for Threshold)
     pub bound_lo: i64,   // USD*1e6 (threshold or lower bound)
@@ -634,26 +652,20 @@ impl Position {
 }
 
 // ---- Helpers ----
-fn price_to_usd_1e6(price: i64, expo: i32) -> Result<i64> {
-    use core::cmp::Ordering::*;
-    match expo.cmp(&(-6)) {
-        Greater => {
-            let shift = (expo + 6) as u32;
-            let v = (price as i128)
-                .checked_mul(10_i128.pow(shift))
-                .ok_or(error!(ErrorCode::Overflow))?;
-            i64::try_from(v).map_err(|_| error!(ErrorCode::Overflow))
-        }
-        Equal => Ok(price),
-        Less => {
-            let shift = (-6 - expo) as u32;
-            let v = (price as i128)
-                .checked_div(10_i128.pow(shift))
-                .ok_or(error!(ErrorCode::Overflow))?;
-            i64::try_from(v).map_err(|_| error!(ErrorCode::Overflow))
-        }
+fn price_to_usd_1e6_from_pyth(price: i64, exponent: i32) -> Result<i64> {
+    let mut v = price as i128;
+    let shift = exponent as i128 + 6; // price * 10^(exponent) * 1e6
+    if shift >= 0 {
+        v *= 10i128.pow(shift as u32);
+    } else {
+        v /= 10i128.pow((-shift) as u32);
     }
+    if v > i64::MAX as i128 || v < i64::MIN as i128 {
+        return Err(error!(ErrorCode::Overflow));
+    }
+    Ok(v as i64)
 }
+
 fn cmp_check(comparator: u8, lhs: i64, rhs: i64) -> Result<bool> {
     Ok(match comparator {
         0 => lhs > rhs,
@@ -710,19 +722,26 @@ pub struct UpdateConfig<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(market_type: MarketType, comparator: u8, bound_lo_usd_6: i64, bound_hi_usd_6: i64, end_ts: i64)]
+#[instruction(
+    market_type: MarketType, 
+    comparator: u8, 
+    bound_lo_usd_6: i64, 
+    bound_hi_usd_6: i64, 
+    end_ts: i64,
+    feed_id: [u8; 32]
+)]
 pub struct CreateMarket<'info> {
     #[account(mut)]
     pub authority: Signer<'info>, // user pays rent
 
-    /// CHECK: Pyth price account
-    pub price_feed: UncheckedAccount<'info>,
+    // /// CHECK: Pyth price account
+    // pub price_feed: UncheckedAccount<'info>,
 
     #[account(
         init,
         payer = authority,
         space = Market::SPACE,
-        seeds = [b"market", authority.key().as_ref(), price_feed.key().as_ref(), &end_ts.to_le_bytes()],
+        seeds = [b"market", authority.key().as_ref(), &feed_id, &end_ts.to_le_bytes()],
         bump
     )]
     pub market: Account<'info, Market>,
@@ -767,11 +786,11 @@ pub struct PlaceBet<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    #[account(mut, has_one = feed, constraint = !market.settled @ ErrorCode::AlreadySettled)]
+    #[account(mut, constraint = !market.settled @ ErrorCode::AlreadySettled)]
     pub market: Account<'info, Market>,
-    
-    /// CHECK: Oracle feed account, validated in logic
-    pub feed: UncheckedAccount<'info>,
+
+    // /// CHECK: Oracle feed account, validated in logic
+    // pub feed: UncheckedAccount<'info>,
     pub mint: Account<'info, Mint>,
 
     #[account(
@@ -813,15 +832,12 @@ pub struct PlaceBet<'info> {
 
 #[derive(Accounts)]
 pub struct ResolveMarket<'info> {
-    #[account(
-        mut,
-        has_one = feed,
-        // Allow any signer to resolve; incentives are enforced via fees
-    )]
+    #[account(mut)]
     pub market: Account<'info, Market>,
 
-    /// CHECK: Oracle feed account
-    pub feed: UncheckedAccount<'info>,
+    // /// CHECK: Oracle feed account
+    // pub feed: UncheckedAccount<'info>,
+    pub price_update: Account<'info, PriceUpdateV2>,
 
     // Resolver receives the tip
     #[account(mut)]
@@ -886,7 +902,7 @@ pub struct Claim<'info> {
         bump
     )]
     pub position: Account<'info, Position>,
-    
+
     /// CHECK: PDA derived inside the program, only used as authority
     #[account(seeds = [ESCROW_SEED, market.key().as_ref(), SIDE_YES], bump)]
     pub escrow_authority_yes: UncheckedAccount<'info>,
@@ -955,9 +971,9 @@ pub struct SetMetadata<'info> {
     #[account(seeds = [b"mint-auth"], bump)]
     /// CHECK: Mint addr
     pub mint_authority: UncheckedAccount<'info>,
-    
+
     #[account(mut)]
-    
+
     /// CHECK: metadata account
     pub metadata: UncheckedAccount<'info>,
 

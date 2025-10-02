@@ -1,9 +1,25 @@
+use jsonwebtoken::{DecodingKey, Validation, decode};
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use validator::{Validate, ValidationError};
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use axum::{http::HeaderMap};
 use time::{OffsetDateTime};
+use std::str::FromStr;
 
-use crate::repo::market::MarketRow;
+use crate::{
+    error::AppError,
+    repo::market::MarketRow
+};
+
+#[derive(Deserialize)]
+pub struct Claims {
+    pub sub: String,
+    pub wallet: String,
+    pub wallet_id: String,
+    pub iat: usize,
+    pub exp: usize,
+}
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -214,4 +230,29 @@ impl From<MarketRow> for MarketDto {
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
+}
+
+pub fn current_user_pubkey(headers: &HeaderMap, jwt_secret: &str) -> Result<Pubkey, AppError> {
+    let cookie = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::unauthorized("missing cookie"))?;
+
+    let sess = cookie
+        .split(';')
+        .map(|s| s.trim())
+        .find_map(|kv| kv.strip_prefix("sp_session="))
+        .ok_or_else(|| AppError::unauthorized("missing sp_session"))?;
+
+    let token = sess.to_string();
+
+    let data = decode::<Claims>(
+        &token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map_err(|_| AppError::unauthorized("invalid session"))?;
+
+    Pubkey::from_str(&data.claims.wallet)
+        .map_err(|_| AppError::bad_request("bad wallet pubkey in session"))
 }

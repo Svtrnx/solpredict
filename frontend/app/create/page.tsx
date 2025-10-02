@@ -78,6 +78,8 @@ export default function CreateMarketPage() {
     getPythFeeds()
       .then(setPythFeeds)
       .catch((e: any) => console.error("Failed to load Pyth feeds", e))
+      // const devTime = new Date(Date.now() + 13 * 60 * 1000)
+      // formData.endDate = devTime
   }, [])
 
   const validateForm = () => {
@@ -271,7 +273,6 @@ export default function CreateMarketPage() {
       setIsSubmitting(false)
     }
   }
-
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
       <div className="absolute inset-0 radial-glow"></div>
@@ -547,6 +548,7 @@ export default function CreateMarketPage() {
                         mode="single"
                         captionLayout="dropdown"
                         selected={formData.endDate}
+                        // selected={nowPlus12Min}
                         onSelect={(date) => {
                           if (!date) return
                           const utc = toUtcMidnight(date)

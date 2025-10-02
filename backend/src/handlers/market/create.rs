@@ -1,28 +1,17 @@
 use axum::{Json, extract::State, http::HeaderMap, http::StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use time::{Duration, OffsetDateTime};
 use validator::Validate;
 
 use crate::{
     error::AppError,
-    handlers::market::types::{Comparator, CreateMarketRequest, MarketType, SeedSide},
+    handlers::market::types::{Comparator, CreateMarketRequest, MarketType, SeedSide, current_user_pubkey},
     solana::anchor_client as anchor_client_,
     state::SharedState,
 };
 
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use jsonwebtoken::{DecodingKey, Validation, decode};
 use prediction_market_program as onchain;
-use std::str::FromStr;
-
-#[derive(Deserialize)]
-struct Claims {
-    sub: String,
-    wallet: String,
-    wallet_id: String,
-    iat: usize,
-    exp: usize,
-}
 
 // Map comparator enum into u8 for on-chain representation
 fn map_comparator(c: Comparator) -> u8 {
@@ -36,7 +25,6 @@ fn map_comparator(c: Comparator) -> u8 {
     }
 }
 
-// Helper: hex feed id -> [u8;32]
 fn feed_id_hex_to_bytes32(s: &str) -> anyhow::Result<[u8; 32]> {
     let s = s.strip_prefix("0x").unwrap_or(s);
     let raw = hex::decode(s)?;
@@ -46,52 +34,6 @@ fn feed_id_hex_to_bytes32(s: &str) -> anyhow::Result<[u8; 32]> {
     let mut out = [0u8; 32];
     out.copy_from_slice(&raw);
     Ok(out)
-}
-
-// Extract user wallet pubkey from sp_session cookie
-fn current_user_pubkey(headers: &HeaderMap, jwt_secret: &str) -> Result<Pubkey, AppError> {
-    let cookie = headers
-        .get(axum::http::header::COOKIE)
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::unauthorized("missing cookie"))?;
-
-    let sess = cookie
-        .split(';')
-        .map(|s| s.trim())
-        .find_map(|kv| kv.strip_prefix("sp_session="))
-        .ok_or_else(|| AppError::unauthorized("missing sp_session"))?;
-
-    let token = sess.to_string();
-
-    let data = decode::<Claims>(
-        &token,
-        &DecodingKey::from_secret(jwt_secret.as_bytes()),
-        &Validation::default(),
-    )
-    .map_err(|_| AppError::unauthorized("invalid session"))?;
-
-    Pubkey::from_str(&data.claims.wallet)
-        .map_err(|_| AppError::bad_request("bad wallet pubkey in session"))
-}
-
-// Resolve Pyth price feed Pubkey from feedId hex
-fn resolve_price_feed_account_from_hex(feed_id_hex: &str) -> anyhow::Result<Pubkey> {
-    let prog_str = std::env::var("PYTH_PUSH_ORACLE_ID")
-        .map_err(|_| anyhow::anyhow!("Env PYTH_PUSH_ORACLE_ID is not set"))?;
-    let pyth_program_id =
-        Pubkey::from_str(&prog_str).map_err(|_| anyhow::anyhow!("Invalid PYTH_PUSH_ORACLE_ID"))?;
-
-    let shard_id: u16 = std::env::var("PYTH_SHARD_ID")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(0);
-
-    let feed_id = feed_id_hex_to_bytes32(feed_id_hex)?;
-
-    let (price_account, _bump) =
-        Pubkey::find_program_address(&[&shard_id.to_le_bytes(), &feed_id], &pyth_program_id);
-
-    Ok(price_account)
 }
 
 // Convert USD float -> int with 1e6 precision
@@ -154,8 +96,8 @@ pub async fn create_market(
     };
 
     // Resolve Pyth price account
-    let price_feed_pubkey: Pubkey = resolve_price_feed_account_from_hex(&req.feed_id)
-        .map_err(|e| AppError::bad_request(&format!("Cannot resolve price account: {e}")))?;
+    let feed_id_bytes = feed_id_hex_to_bytes32(&req.feed_id)
+        .map_err(|e| AppError::bad_request(&format!("bad feedId hex: {e}")))?;
 
     // Build transaction (create + seed market)
     let ctx = state.anchor.clone();
@@ -173,7 +115,7 @@ pub async fn create_market(
             anchor_client_::build_create_and_seed(
                 &ctx,
                 user_pubkey,
-                price_feed_pubkey,
+                feed_id_bytes,
                 market_type_onchain,
                 comparator_u8,
                 bound_lo_usd_6,
@@ -192,7 +134,7 @@ pub async fn create_market(
         &[
             b"market",
             user_pubkey.as_ref(),
-            price_feed_pubkey.as_ref(),
+            &feed_id_bytes,
             &end_ts.to_le_bytes(),
         ],
         &onchain::ID,

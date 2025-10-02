@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 
@@ -44,6 +44,8 @@ import { showToast } from "@/components/shared/show-toast"
 import { useMobile } from "@/hooks/use-mobile"
 import { Market, TimeLeft } from "@/lib/types"
 import { useAppSelector } from "@/lib/hooks"
+
+import { resolveMarketWithPyth } from "@/lib/features/market/resolve"
 
 interface PayoutCalculation {
   shares: number
@@ -190,6 +192,15 @@ export default function MarketPage() {
 
   const wallet = useWallet()
   const connection = useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
+
+
+  async function handleResolve() {
+    await resolveMarketWithPyth({
+      connection: connection,
+      walletAdapter: wallet,
+      marketPda: market_pda
+    })
+  }
 
   const handleBet = useCallback(async () => {
     if (!selectedSide || !betAmount || !market) return;
@@ -465,7 +476,7 @@ export default function MarketPage() {
           <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight">{market.title}</h1>
           <p className="text-lg text-muted-foreground max-w-4xl">{market.description}</p>
         </div>
-
+        <Button onClick={handleResolve} className="w-100 cursor-pointer">Resolve Market</Button>
         <CountdownTimer endAt={market.endDate} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

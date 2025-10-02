@@ -6,6 +6,7 @@ pub mod config;
 pub mod routes;
 pub mod solana;
 pub mod error;
+pub mod types;
 pub mod state;
 pub mod repo;
 pub mod ai;

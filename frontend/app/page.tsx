@@ -1,7 +1,6 @@
-"use client"
+"use client";
 
-"use client"
-
+// import "@/pyth-readuint-shim";
 import { useState } from "react"
 import Link from "next/link"
 

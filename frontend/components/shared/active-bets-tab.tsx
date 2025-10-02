@@ -33,6 +33,22 @@ function getBetUrgency(endDate: string) {
   return "normal"
 }
 
+function asNumber(v: unknown, def = 0): number {
+  const n = typeof v === "number" ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : def;
+}
+
+function signColor(n: number) {
+  if (n > 0) return "text-emerald-400";
+  if (n < 0) return "text-rose-400";
+  return "text-zinc-400";
+}
+
+function signPrefix(n: number) {
+  if (n > 0) return "+";
+  if (n < 0) return "−";
+  return "";
+}
 
 
 function getUrgencyStyles(urgency: string) {
@@ -92,7 +108,9 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
       {sortedBets.map((bet) => {
         const urgency = getBetUrgency(bet.endDate!)
         const urgencyStyles = getUrgencyStyles(urgency)
-
+        const pnlPct = asNumber(bet.pnl);
+        const pnlAmt = asNumber(bet.pnlAmount);
+        console.log(`Bet id: ${bet.id}, pnl: ${bet.pnl}, pnl ammount: ${bet.pnlAmount}, pnlPct: ${pnlPct}, pnlAmt: ${pnlAmt}`)
         return (
           <Card key={bet.id} className={`glass glow hover:glow-cyan transition-all duration-300 ${urgencyStyles.cardClass}`}>
             <CardContent className="pt-6">
@@ -133,20 +151,21 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                       ) : (
                         <TrendingDown className="w-3 h-3 text-rose-400" />
                       )}
-                      <span className={`font-semibold ${bet.pnl ? "text-emerald-400" : "text-rose-400"}`}>{bet.pnl ? "+" : "-"}{bet.pnl}%</span>
+                      <span className={`font-semibold ${signColor(pnlPct)}`}>
+                        {signPrefix(pnlPct)}
+                        {Math.abs(pnlPct).toFixed(2)}%
+                      </span>
                     </div>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Amount</span>
-                    <span className={`font-semibold ${bet.pnlAmount ? "text-emerald-400" : "text-rose-400"}`}>
-                      {bet.pnlAmount ? "+" : "-"}
-                      {Number(bet.pnlAmount).toLocaleString("en-US", {
-                        minimumFractionDigits: 1,
-                        maximumFractionDigits: 1,
-                      })} USDC
+                    <span className={`font-semibold ${signColor(pnlAmt)}`}>
+                      {signPrefix(pnlAmt)}
+                      {Math.abs(pnlAmt).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                      {" "}USDC
                     </span>
                   </div>
-                  <AnimatedPnLBar pnlAmount={bet.pnlAmount!} amount={bet.amount!} />
+                  <AnimatedPnLBar pnlAmount={asNumber(bet.pnlAmount)} amount={asNumber(bet.amount)} />
                 </div>
 
                 <div className="flex flex-col">

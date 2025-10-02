@@ -1,9 +1,10 @@
+use anchor_client::anchor_lang::InstructionData;
 use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
 use anchor_client::solana_sdk::commitment_config::CommitmentConfig;
 use anchor_client::solana_sdk::sysvar;
 use anchor_client::solana_sdk::{
     hash::Hash,
-    instruction::Instruction,
+    instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Signature, read_keypair_file},
     signer::{Signer, keypair::Keypair},
@@ -11,22 +12,23 @@ use anchor_client::solana_sdk::{
     transaction::Transaction,
 };
 use anchor_client::{Client, Cluster, Program};
+use anchor_spl::associated_token::{
+    self, ID as ASSOCIATED_TOKEN_PROGRAM_ID, get_associated_token_address,
+};
+use anchor_spl::token::{self, ID as TOKEN_PROGRAM_ID};
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose};
 use bincode::{config::standard, serde::encode_to_vec};
 use prediction_market_program as onchain;
-
-use anchor_spl::associated_token::{
-    self, ID as ASSOCIATED_TOKEN_PROGRAM_ID, get_associated_token_address,
-};
 use spl_associated_token_account::instruction as ata_ix;
-use anchor_spl::token::{self, ID as TOKEN_PROGRAM_ID};
 
+use spl_memo::build_memo;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{str::FromStr, time::Duration};
 use tokio::time::sleep;
-use spl_memo::build_memo;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::types::ix::{IxAccountMetaJson, IxJson, ResolveIxBundle};
 
 pub struct AnchorCtx {
     pub client: Client<Arc<Keypair>>,
@@ -39,7 +41,7 @@ const SIDE_NO: &[u8] = b"no";
 
 // ==== PDA helpers ====
 
-fn pda_market(user: &Pubkey, feed: &Pubkey, end_ts: i64) -> (Pubkey, u8) {
+fn pda_market(user: &Pubkey, feed: &[u8; 32], end_ts: i64) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             b"market",
@@ -170,8 +172,6 @@ pub fn airdrop_usdc_once(ctx: &AnchorCtx, user: Pubkey) -> anyhow::Result<Signat
 // ==== Token metadata (Metaplex) USDC Mint ====
 
 pub fn set_token_metadata(ctx: &AnchorCtx, uri: &str) -> anyhow::Result<Signature> {
-    use std::str::FromStr;
-
     let program = program(ctx)?;
     let mint = Pubkey::from_str("5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh")?;
     let (mint_auth_pda, _) = Pubkey::find_program_address(&[b"mint-auth"], &onchain::ID);
@@ -210,7 +210,7 @@ pub fn set_token_metadata(ctx: &AnchorCtx, uri: &str) -> anyhow::Result<Signatur
 pub fn create_market(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,
-    price_feed: Pubkey,
+    feed_id: [u8; 32],
     market_type: onchain::MarketType,
     comparator: u8,
     bound_lo_usd_6: i64,
@@ -221,7 +221,7 @@ pub fn create_market(
     let mint = onchain::USDC_MINT;
 
     // Derive all PDAs/ATAs needed by the instruction
-    let (market_pda, _) = pda_market(&user_pubkey, &price_feed, end_ts);
+    let (market_pda, _) = pda_market(&user_pubkey, &feed_id, end_ts);
     let (escrow_yes, _) = pda_escrow_auth(&market_pda, SIDE_YES);
     let (escrow_no, _) = pda_escrow_auth(&market_pda, SIDE_NO);
     let vault_yes = get_associated_token_address(&escrow_yes, &mint);
@@ -233,7 +233,6 @@ pub fn create_market(
         .request()
         .accounts(onchain::accounts::CreateMarket {
             authority: user_pubkey,
-            price_feed,
             market: market_pda,
             mint,
             escrow_authority_yes: escrow_yes,
@@ -251,6 +250,7 @@ pub fn create_market(
             bound_lo_usd_6,
             bound_hi_usd_6,
             end_ts,
+            feed_id,
         })
         .instructions()?;
 
@@ -268,7 +268,6 @@ pub fn build_place_bet_ixs(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,
     market_pda: Pubkey,
-    feed_pubkey: Pubkey,
     side_yes: bool,
     amount_1e6: u64,
 ) -> Result<Vec<Instruction>> {
@@ -276,20 +275,23 @@ pub fn build_place_bet_ixs(
     let mint = onchain::USDC_MINT;
 
     let (escrow_yes, _) = pda_escrow_auth(&market_pda, b"yes");
-    let (escrow_no, _)  = pda_escrow_auth(&market_pda, b"no");
+    let (escrow_no, _) = pda_escrow_auth(&market_pda, b"no");
     let vault_yes = get_associated_token_address(&escrow_yes, &mint);
-    let vault_no  = get_associated_token_address(&escrow_no,  &mint);
-    let user_ata  = get_associated_token_address(&user_pubkey, &mint);
+    let vault_no = get_associated_token_address(&escrow_no, &mint);
+    let user_ata = get_associated_token_address(&user_pubkey, &mint);
     let (position_pda, _) = pda_position(&market_pda, &user_pubkey);
 
-    let side = if side_yes { onchain::Side::Yes } else { onchain::Side::No };
+    let side = if side_yes {
+        onchain::Side::Yes
+    } else {
+        onchain::Side::No
+    };
 
     let ixs = program
         .request()
         .accounts(onchain::accounts::PlaceBet {
             user: user_pubkey,
             market: market_pda,
-            feed: feed_pubkey,
             mint,
             user_ata,
             position: position_pda,
@@ -302,7 +304,10 @@ pub fn build_place_bet_ixs(
             system_program: anchor_client::solana_sdk::system_program::ID,
             rent: anchor_client::solana_sdk::sysvar::rent::ID,
         })
-        .args(onchain::instruction::PlaceBet { side, amount: amount_1e6 })
+        .args(onchain::instruction::PlaceBet {
+            side,
+            amount: amount_1e6,
+        })
         .instructions()?;
 
     Ok(ixs)
@@ -312,7 +317,7 @@ pub fn build_place_bet_ixs(
 pub fn build_create_and_seed(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,
-    price_feed: Pubkey,
+    feed_id: [u8; 32],
     market_type: onchain::MarketType,
     comparator: u8,
     bound_lo_usd_6: i64,
@@ -325,7 +330,7 @@ pub fn build_create_and_seed(
     let mint = onchain::USDC_MINT;
 
     // PDAs / ATAs
-    let (market_pda, _) = pda_market(&user_pubkey, &price_feed, end_ts);
+    let (market_pda, _) = pda_market(&user_pubkey, &feed_id, end_ts);
     let (escrow_yes, _) = pda_escrow_auth(&market_pda, SIDE_YES);
     let (escrow_no, _) = pda_escrow_auth(&market_pda, SIDE_NO);
     let vault_yes = get_associated_token_address(&escrow_yes, &mint);
@@ -339,7 +344,6 @@ pub fn build_create_and_seed(
         .request()
         .accounts(onchain::accounts::CreateMarket {
             authority: user_pubkey,
-            price_feed,
             market: market_pda,
             mint,
             escrow_authority_yes: escrow_yes,
@@ -357,6 +361,7 @@ pub fn build_create_and_seed(
             bound_lo_usd_6,
             bound_hi_usd_6,
             end_ts,
+            feed_id,
         })
         .instructions()?; // first ix
 
@@ -367,7 +372,6 @@ pub fn build_create_and_seed(
             .accounts(onchain::accounts::PlaceBet {
                 user: user_pubkey,
                 market: market_pda,
-                feed: price_feed,
                 mint,
                 user_ata,
                 escrow_authority_yes: escrow_yes,
@@ -406,15 +410,16 @@ pub fn build_resolve(
     ctx: &AnchorCtx,
     resolver_pubkey: Pubkey,
     market_authority: Pubkey,
-    price_feed: Pubkey,
+    feed_id: [u8; 32],
     end_ts: i64,
+    price_update: Pubkey,
 ) -> anyhow::Result<String> {
     let program = program(ctx)?;
     let mint: Pubkey = "5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh"
         .parse()
         .unwrap();
 
-    let (market_pda, _) = pda_market(&market_authority, &price_feed, end_ts);
+    let (market_pda, _) = pda_market(&market_authority, &feed_id, end_ts);
     let market_acc: onchain::Market = program.account(market_pda)?;
     let treasury_owner = market_acc.treasury_wallet_snapshot;
 
@@ -449,7 +454,7 @@ pub fn build_resolve(
         .request()
         .accounts(onchain::accounts::ResolveMarket {
             market: market_pda,
-            feed: price_feed,
+            price_update,
             resolver: resolver_pubkey,
             resolver_ata,
             mint,
@@ -475,28 +480,123 @@ pub fn build_resolve(
     encode_unsigned_tx(&tx)
 }
 
-// ==== Market: claim winnings ====
+fn ix_to_json(ix: Instruction) -> IxJson {
+    IxJson {
+        program_id: ix.program_id.to_string(),
+        accounts: ix
+            .accounts
+            .into_iter()
+            .map(|m| IxAccountMetaJson {
+                pubkey: m.pubkey.to_string(),
+                is_signer: m.is_signer,
+                is_writable: m.is_writable,
+            })
+            .collect(),
+        data_b64: general_purpose::STANDARD.encode(ix.data),
+    }
+}
 
+pub fn build_resolve_ix_bundle(
+    ctx: &AnchorCtx,
+    resolver_pubkey: Pubkey,
+    market_pda: Pubkey,
+) -> Result<ResolveIxBundle> {
+    let program = program(ctx)?;
+    let mint: Pubkey = onchain::USDC_MINT;
+    // read market account
+    let market_acc: onchain::Market = program.account(market_pda)?;
+    if market_acc.settled {
+        anyhow::bail!("market already settled");
+    }
+
+    // feed_id hex
+    let feed_id_hex = format!("0x{}", hex::encode(market_acc.feed_id));
+
+    let end_ts = market_acc.end_ts;
+
+    let treasury_owner = market_acc.treasury_wallet_snapshot;
+    // derive PDAs/ATAs
+    let (escrow_yes, _) =
+        Pubkey::find_program_address(&[b"escrow-auth", market_pda.as_ref(), b"yes"], &onchain::ID);
+    let (escrow_no, _) =
+        Pubkey::find_program_address(&[b"escrow-auth", market_pda.as_ref(), b"no"], &onchain::ID);
+    let vault_yes = get_associated_token_address(&escrow_yes, &mint);
+    let vault_no = get_associated_token_address(&escrow_no, &mint);
+    let resolver_ata = get_associated_token_address(&resolver_pubkey, &mint);
+    let treasury_ata = get_associated_token_address(&treasury_owner, &mint);
+    // instructions in JSON
+    let mut out: Vec<IxJson> = vec![];
+
+    // create ATA for treasure (payer = resolver)
+    let need_treasury_ata = program
+        .rpc()
+        .get_account_with_commitment(&treasury_ata, CommitmentConfig::processed())?
+        .value
+        .is_none();
+    if need_treasury_ata {
+        let create_ata_ix = ata_ix::create_associated_token_account(
+            &resolver_pubkey,
+            &treasury_owner,
+            &mint,
+            &anchor_spl::token::ID,
+        );
+        out.push(ix_to_json(create_ata_ix));
+    }
+    // initial ix ResolveMarket
+    let price_update_placeholder = Pubkey::default();
+
+    let accounts = vec![
+        AccountMeta::new(market_pda, false),
+        AccountMeta::new_readonly(price_update_placeholder, false),
+        AccountMeta::new(resolver_pubkey, true),
+        AccountMeta::new(resolver_ata, false), 
+        AccountMeta::new_readonly(mint, false),
+        AccountMeta::new(treasury_ata, false),
+        AccountMeta::new_readonly(escrow_yes, false),
+        AccountMeta::new_readonly(escrow_no, false),
+        AccountMeta::new(vault_yes, false),
+        AccountMeta::new(vault_no, false),
+        AccountMeta::new_readonly(anchor_spl::token::ID, false), 
+        AccountMeta::new_readonly(anchor_spl::associated_token::ID, false),
+        AccountMeta::new_readonly(anchor_client::solana_sdk::system_program::ID, false),
+    ];
+    // discriminator + empty data
+    let data = onchain::instruction::ResolveMarket {}.data();
+
+    let resolve_ix = Instruction {
+        program_id: onchain::ID,
+        accounts,
+        data,
+    };
+    // in JSON
+    out.push(ix_to_json(resolve_ix));
+
+    Ok(ResolveIxBundle {
+        ok: true,
+        market_id: market_pda.to_string(),
+        end_ts,
+        feed_id_hex,
+        price_update_index: 1,
+        instructions: out,
+        message: "Resolve ix bundle; inject price_update and send with Pyth Receiver".into(),
+    })
+}
+
+// ==== Market: claim winnings ====
 pub fn build_claim(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,
-    market_authority: Pubkey,
-    price_feed: Pubkey,
-    end_ts: i64,
+    market_pda: Pubkey,
 ) -> anyhow::Result<String> {
     let program = program(ctx)?;
-    let mint: Pubkey = "5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh"
-        .parse()
-        .unwrap();
-
-    let (market_pda, _) = pda_market(&market_authority, &price_feed, end_ts);
-    let (position_pda, _) = pda_position(&market_pda, &user_pubkey);
+    let mint = onchain::USDC_MINT;
 
     let (escrow_yes, _) = pda_escrow_auth(&market_pda, SIDE_YES);
     let (escrow_no, _) = pda_escrow_auth(&market_pda, SIDE_NO);
     let vault_yes = get_associated_token_address(&escrow_yes, &mint);
     let vault_no = get_associated_token_address(&escrow_no, &mint);
     let user_ata = get_associated_token_address(&user_pubkey, &mint);
+    let (position_pda, _) = pda_position(&market_pda, &user_pubkey);
 
     let ixs = program
         .request()
@@ -517,11 +617,9 @@ pub fn build_claim(
         .args(onchain::instruction::Claim {})
         .instructions()?;
 
-    // Unsigned tx (payer = user)
     let bh = latest_blockhash(&program)?;
     let mut tx = Transaction::new_with_payer(&ixs, Some(&user_pubkey));
     tx.message.recent_blockhash = bh;
-
     encode_unsigned_tx(&tx)
 }
 
