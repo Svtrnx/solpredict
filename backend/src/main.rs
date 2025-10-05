@@ -1,12 +1,12 @@
-use solpredict::config;
-use solpredict::db;
-use solpredict::routes;
 use solpredict::solana::anchor_client;
-use solpredict::state;
 use solpredict::telemetry;
+use solpredict::config;
+use solpredict::routes;
+use solpredict::state;
+use solpredict::db;
 
-use std::sync::Arc;
 use std::{env, net::SocketAddr};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,6 +36,8 @@ async fn main() -> anyhow::Result<()> {
         db,
         Arc::new(anchor),
     );
+
+    state::init_global(app_state.clone());
 
     let app = routes::build(app_state);
 

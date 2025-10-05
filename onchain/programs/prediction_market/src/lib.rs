@@ -3,7 +3,6 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
 };
-use core::cmp::Ordering::*;
 use mpl_token_metadata::{
     instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2, ID as TOKEN_METADATA_PROGRAM_ID,
 };
@@ -289,13 +288,26 @@ pub mod prediction_market {
             ErrorCode::TooEarly
         );
 
-        // === Read price from Pyth Pull Oracle ===
-        let max_age: u64 = 300; // acceptable old age of an update (secs)
+        let now = Clock::get()?.unix_timestamp;
+        // if resolve is too late, VOID the market
+        const RESOLVE_HORIZON_SECS: i64 = 15 * 86_400; // 15 days
+        if now - m.end_ts > RESOLVE_HORIZON_SECS {
+            m.winning_side = 3; // VOID
+            m.payout_pool = 0;
+            m.settled = true;
+            msg!("[RESOLVE] market voided due to resolve horizon exceeded ({}s > {}s)", now - m.end_ts, RESOLVE_HORIZON_SECS);
+            return Ok(());
+        }
 
+        let max_age_i64 = (now - m.end_ts) + 600;
+        let max_age: u64 = max_age_i64
+            .try_into()
+            .unwrap_or(u64::MAX);
+
+        // === Read price from Pyth Pull Oracle ===
         let price = ctx
             .accounts
             .price_update
-            // checks the owner, freshness, and that it is the same feed_id stored in Market
             .get_price_no_older_than(&Clock::get()?, max_age, &m.feed_id)
             .map_err(|_| error!(ErrorCode::InvalidPriceFeed))?;
 

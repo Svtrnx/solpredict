@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const Base58Pubkey = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+export const Base64Str    = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/).min(1);
+export const Hex32With0x  = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
+export const Base58Signature = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{64,100}$/);
+
 export interface MarketFilters {
   category: string
   status: "all" | "active" | "resolved"
@@ -55,7 +60,7 @@ export const RawCreateRespSchema = z.object({
   createTx: z.string().optional(),
   placeBetTx: z.string().optional(),
 })
-type RawCreateResp = z.infer<typeof RawCreateRespSchema>
+// type RawCreateResp = z.infer<typeof RawCreateRespSchema>
 
 export const ListMarketSchema = z.object({
   id: z.union([z.string(), z.number()]),
@@ -104,29 +109,50 @@ export interface TimeLeft {
 export const SORTS = ["volume", "participants", "ending"] as const
 export type SortKey = typeof SORTS[number]
 
-
-export const PrepareMarketResolveSchema = z.object({
-  market_pda: z.string(),
-  price_update: z.string(),
+export const ResolveIxRequestSchema = z.object({
+  market_pda: Base58Pubkey,
 });
-export type PrepareMarketResolveFormData = z.infer<typeof PrepareMarketResolveSchema>;
+export type ResolveIxRequest = z.infer<typeof ResolveIxRequestSchema>;
 
-export const PrepareMarketResolveResponseSchema = z.object({
+export const IxAccountMetaJsonSchema = z.object({
+  pubkey: Base58Pubkey,
+  is_signer: z.boolean(),
+  is_writable: z.boolean(),
+});
+export type IxAccountMetaJson = z.infer<typeof IxAccountMetaJsonSchema>;
+
+export const IxJsonSchema = z.object({
+  program_id: Base58Pubkey,
+  accounts: z.array(IxAccountMetaJsonSchema).min(1),
+  data_b64: Base64Str,
+});
+export type IxJson = z.infer<typeof IxJsonSchema>;
+
+export const ResolveIxBundleSchema = z.object({
   ok: z.boolean(),
-  tx_base64: z.string(),
-  market_id: z.string(),
-  message: z.string(),
+  market_id: Base58Pubkey,
+  end_ts: z.number().int().nonnegative(),
+  feed_id_hex: Hex32With0x,
+  price_update_index: z.number().int().nonnegative(),
+  instructions: z.array(IxJsonSchema).min(1),
+  message: z.string().min(1),
 });
-export type PrepareMarketResolveResponse = z.infer<typeof PrepareMarketResolveResponseSchema>;
+export type ResolveIxBundle = z.infer<typeof ResolveIxBundleSchema>;
 
-export const ConfirmResolveSchema = z.object({
-  market_pda: z.string(),
-  signature: z.string(),
+export const ConfirmResolveRequestSchema = z.object({
+  market_pda: Base58Pubkey,
+  tx_sig: Base58Signature,
 });
-export type ConfirmResolveFormData = z.infer<typeof ConfirmResolveSchema>;
+export type ConfirmResolveRequest = z.infer<typeof ConfirmResolveRequestSchema>;
 
+// Response
 export const ConfirmResolveResponseSchema = z.object({
   ok: z.boolean(),
-  status: z.string().optional(),
+  market_id: Base58Pubkey,
+  status: z.string(),
+  winning_side: z.number().int().min(1).max(3).nullable().optional(),
+  resolved_price_1e6: z.number().int().nullable().optional(),
+  payout_pool_1e6: z.number().int().nullable().optional(),
+  tx_sig_resolve: z.string().nullable().optional(),
 });
-export type TConfirmResolveResponse = z.infer<typeof ConfirmResolveResponseSchema>;
+export type ConfirmResolveResponse = z.infer<typeof ConfirmResolveResponseSchema>;

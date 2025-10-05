@@ -1,20 +1,28 @@
+use jsonwebtoken::{EncodingKey, Header, encode};
+use anchor_client::{solana_sdk::pubkey::Pubkey, anchor_lang::prelude::Pubkey as AnchorPubkey};
+use time::{Duration, OffsetDateTime};
+use cookie::{Cookie, SameSite};
+use std::str::FromStr;
+use serde::Serialize;
+
+
 use axum::{
     Json,
     extract::State,
     http::{StatusCode, header},
     response::IntoResponse,
 };
-use cookie::{Cookie, SameSite};
-use jsonwebtoken::{EncodingKey, Header, encode};
-use serde::Serialize;
+
 use siws::{
     message::{SiwsMessage, ValidateOptions},
     output::SiwsOutput,
 };
-use time::{Duration, OffsetDateTime};
 
-use crate::repo::users;
-use crate::state::SharedState;
+use crate::{
+    solana::anchor_client as anchor_client_, 
+    repo::users,
+    state::SharedState,
+};
 
 #[derive(Serialize)]
 struct VerifyOk {
@@ -91,13 +99,44 @@ pub async fn verify(
     let address = bs58::encode(&output.account.public_key).into_string();
 
     // Create or fetch wallet in DB
-    let (user_id, wallet_id) = match users::upsert_wallet(state.db.pool(), &address, now).await {
+    let (user_id, wallet_id, created_wallet) = match users::upsert_wallet(state.db.pool(), &address, now).await {
         Ok(ids) => ids,
         Err(e) => {
             tracing::error!(error=?e, "db upsert_wallet failed");
             return (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response();
         }
     };
+
+    if created_wallet {
+        let address_cloned = address.clone();
+
+        let join_res = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let ctx  = anchor_client_::connect_devnet()?;
+            let addr = Pubkey::from_str(&address_cloned)?;
+            let _sig = anchor_client_::airdrop_usdc_once(&ctx, addr)?;
+            Ok(())
+        })
+        .await;
+
+        let inner_res = match join_res {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("join error: {e}"),
+                )
+                    .into_response();
+            }
+        };
+
+        if let Err(e) = inner_res {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("airdrop error: {e:#}"),
+            )
+                .into_response();
+        }
+    }
 
     // Build JWT
     let iat = now.unix_timestamp() as usize;
@@ -126,7 +165,7 @@ pub async fn verify(
         .secure(secure)
         .same_site(SameSite::Lax)
         .path("/")
-        .max_age(Duration::hours(24))
+        .max_age(Duration::hours(24 * 3))
         .build();
 
     // Return

@@ -16,7 +16,6 @@ anchor-debug = []
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl  = { version = "0.31.1" } 
 mpl-token-metadata = "5.1.1"
-# pyth-sdk-solana = "0.10.6"
 spl-token = { version = "8.0.0", default-features = false }
 spl-associated-token-account = { version = "7.0.0", default-features = false, features = ["no-entrypoint"] }
 pyth-solana-receiver-sdk ="1.0.1"

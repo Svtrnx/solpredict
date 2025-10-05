@@ -21,20 +21,20 @@ pub struct Claims {
     pub exp: usize,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MarketType {
     PriceThreshold,
     PriceRange,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum MarketCategory {
     #[serde(rename = "crypto")]
     Crypto,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum SeedSide {
     Yes,
     No,
@@ -147,6 +147,10 @@ pub struct TitleSpec {
     pub bound_hi_1e6: Option<i64>,
 }
 
+pub fn usd_to_1e6(x: f64) -> i64 {
+    (x * 1_000_000f64).round() as i64
+}
+
 pub fn generate_title(s: &TitleSpec) -> String {
     let symbol_trimmed = s.symbol.strip_prefix("Crypto.").unwrap_or(&s.symbol);
     let date_str = s.end_date_utc.format("%b %d, %Y").to_string();
@@ -155,14 +159,17 @@ pub fn generate_title(s: &TitleSpec) -> String {
         "price-threshold" => {
             let thr = (s.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
             let cmp_txt = match s.comparator.as_deref().unwrap_or(">") {
-                ">"  => "greater than",
-                "<"  => "less than",
+                ">" => "greater than",
+                "<" => "less than",
                 ">=" => "greater than or equal to",
                 "<=" => "less than or equal to",
-                "="  => "equal to",
-                _    => "reach",
+                "=" => "equal to",
+                _ => "reach",
             };
-            format!("Will {symbol_trimmed} be {cmp_txt} ${:.2} by {date_str}?", thr)
+            format!(
+                "Will {symbol_trimmed} be {cmp_txt} ${:.2} by {date_str}?",
+                thr
+            )
         }
         "price-range" => {
             let lo = (s.bound_lo_1e6.unwrap_or(0) as f64) / 1_000_000.0;
@@ -181,7 +188,7 @@ impl From<&MarketRow> for TitleSpec {
         TitleSpec {
             symbol: r.symbol.clone(),
             end_date_utc: r.end_date_utc,
-            market_type: Some(r.market_type.clone()),   
+            market_type: Some(r.market_type.clone()),
             comparator: r.comparator.clone(),
             bound_lo_1e6: r.bound_lo_1e6,
             bound_hi_1e6: r.bound_hi_1e6,
@@ -192,17 +199,20 @@ impl From<&MarketRow> for TitleSpec {
 // ========== Mapping Row -> DTO ==========
 impl From<MarketRow> for MarketDto {
     fn from(r: MarketRow) -> Self {
-        let yes = r.price_yes_bp.map(|bp| (bp as f64) / 10_000.0).unwrap_or(0.5);
-        let no  = (1.0 - yes).max(0.0);
+        let yes = r
+            .price_yes_bp
+            .map(|bp| (bp as f64) / 10_000.0)
+            .unwrap_or(0.5);
+        let no = (1.0 - yes).max(0.0);
 
         let pool_1e6 = r.initial_liquidity_1e6 + r.yes_total_1e6 + r.no_total_1e6;
 
         let status = match r.status.as_str() {
-            "active"                     => MarketStatusDto::Open,
-            "awaiting_resolve"           => MarketStatusDto::Locked,
+            "active" => MarketStatusDto::Open,
+            "awaiting_resolve" => MarketStatusDto::Locked,
             "settled_yes" | "settled_no" => MarketStatusDto::Settled,
-            "void"                       => MarketStatusDto::Void,
-            _                            => MarketStatusDto::Open,
+            "void" => MarketStatusDto::Void,
+            _ => MarketStatusDto::Open,
         };
 
         // Gen title
@@ -226,7 +236,6 @@ impl From<MarketRow> for MarketDto {
         }
     }
 }
-
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
@@ -255,4 +264,47 @@ pub fn current_user_pubkey(headers: &HeaderMap, jwt_secret: &str) -> Result<Pubk
 
     Pubkey::from_str(&data.claims.wallet)
         .map_err(|_| AppError::bad_request("bad wallet pubkey in session"))
+}
+
+pub fn cat_str(_: MarketCategory) -> &'static str {
+    "crypto"
+}
+
+pub fn cmp_str(c: Comparator) -> &'static str {
+    match c {
+        Comparator::Gte => ">=",
+        Comparator::Gt => ">",
+        Comparator::Lte => "<=",
+        Comparator::Lt => "<",
+        Comparator::Eq => "=",
+        Comparator::Empty => "",
+    }
+}
+
+
+pub fn feed_id_hex_to_bytes32(s: &str) -> anyhow::Result<[u8; 32]> {
+    let s = s.strip_prefix("0x").unwrap_or(s);
+    let raw = hex::decode(s)?;
+    if raw.len() != 32 {
+        anyhow::bail!("feedId must be 32 bytes (64 hex chars)");
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&raw);
+    Ok(out)
+}
+
+// Derive Pyth price feed account from feedId and shard
+pub fn resolve_price_feed_account_from_hex(feed_id_hex: &str) -> anyhow::Result<Pubkey> {
+    let prog_str = std::env::var("PYTH_PUSH_ORACLE_ID")
+        .map_err(|_| anyhow::anyhow!("Env PYTH_PUSH_ORACLE_ID is not set"))?;
+    let pyth_program_id = Pubkey::from_str(&prog_str)
+        .map_err(|_| anyhow::anyhow!("Invalid PYTH_PUSH_ORACLE_ID"))?;
+    let shard_id: u16 = std::env::var("PYTH_SHARD_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let feed_id = feed_id_hex_to_bytes32(feed_id_hex)?;
+    let (price_account, _) =
+        Pubkey::find_program_address(&[&shard_id.to_le_bytes(), &feed_id], &pyth_program_id);
+    Ok(price_account)
 }

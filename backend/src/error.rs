@@ -1,7 +1,7 @@
 use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use validator::ValidationErrors;
 use serde::Serialize;
 use thiserror::Error;
-use validator::ValidationErrors;
 
 #[derive(Debug, Serialize)]
 pub struct ErrorBody { pub error: String, pub code: u16 }

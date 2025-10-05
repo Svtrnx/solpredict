@@ -1,11 +1,11 @@
-use anchor_client::solana_sdk::pubkey::Pubkey;
-use axum::{Json, extract::State, http::StatusCode};
-use serde::Deserialize;
-use serde_json::json;
 use spl_associated_token_account::get_associated_token_address;
+use axum::{Json, extract::State, http::StatusCode};
+use anchor_client::solana_sdk::pubkey::Pubkey;
+use serde::Deserialize;
 use std::str::FromStr;
+use serde_json::json;
 
-use crate::{solana::anchor_client as acli, state::SharedState};
+use crate::{solana::anchor_client as anchor_client_, state::SharedState};
 
 #[derive(Deserialize)]
 pub struct AirdropReq {
@@ -14,7 +14,7 @@ pub struct AirdropReq {
 
 // Endpoint: one-time USDC airdrop - devnet only
 pub async fn usdc_airdrop_once(
-    State(_app): State<SharedState>,
+    State(state): State<SharedState>,
     Json(req): Json<AirdropReq>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     // Parse user pubkey from request
@@ -23,9 +23,9 @@ pub async fn usdc_airdrop_once(
 
     // Run anchor-client logic inside blocking task
     let res = tokio::task::spawn_blocking(move || -> anyhow::Result<(String, Pubkey, Pubkey)> {
-        let ctx = acli::connect_devnet()?; 
-        let sig = acli::airdrop_usdc_once(&ctx, user)?;
-        let mint = Pubkey::from_str("5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh")?;
+        let ctx = anchor_client_::connect_devnet()?; 
+        let sig = anchor_client_::airdrop_usdc_once(&ctx, user)?;
+        let mint = Pubkey::from_str(&state.usdc_mint)?;
         let ata = get_associated_token_address(&user, &mint);
         Ok((sig.to_string(), mint, ata))
     })

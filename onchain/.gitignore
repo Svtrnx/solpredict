@@ -1,8 +1,13 @@
 **/target/
 /node_modules
 **/*.rs.bk
-*.package-lock.json
-*.package.json
+
+package-lock.json
+package.json
+idl.json
+yarn.lock
+pnpm-lock.yaml
+
 .vscode/
 *.code-workspace
 

@@ -1,16 +1,19 @@
 use axum::{Json, extract::State, http::HeaderMap, http::StatusCode};
-use serde::{Serialize};
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use time::{Duration, OffsetDateTime};
 use validator::Validate;
+use serde::{Serialize};
+use anyhow::anyhow;
 
 use crate::{
-    error::AppError,
-    handlers::market::types::{Comparator, CreateMarketRequest, MarketType, SeedSide, current_user_pubkey},
+    handlers::market::types::{Comparator, CreateMarketRequest, MarketType, 
+        SeedSide, current_user_pubkey, cat_str, cmp_str, feed_id_hex_to_bytes32,
+        usd_to_1e6},
     solana::anchor_client as anchor_client_,
     state::SharedState,
+    error::AppError,
 };
 
-use anchor_client::solana_sdk::pubkey::Pubkey;
 use prediction_market_program as onchain;
 
 // Map comparator enum into u8 for on-chain representation
@@ -23,22 +26,6 @@ fn map_comparator(c: Comparator) -> u8 {
         // Eq/Empty not supported on-chain
         _ => 0,
     }
-}
-
-fn feed_id_hex_to_bytes32(s: &str) -> anyhow::Result<[u8; 32]> {
-    let s = s.strip_prefix("0x").unwrap_or(s);
-    let raw = hex::decode(s)?;
-    if raw.len() != 32 {
-        anyhow::bail!("feedId must be 32 bytes (64 hex chars)");
-    }
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&raw);
-    Ok(out)
-}
-
-// Convert USD float -> int with 1e6 precision
-fn usd_to_1e6(x: f64) -> i64 {
-    (x * 1_000_000f64).round() as i64
 }
 
 // ----- RESPONSE -----
@@ -64,7 +51,7 @@ pub async fn create_market(
 
     // Validate request
     req.validate()?;
-    if req.end_date <= OffsetDateTime::now_utc() + Duration::minutes(10) {
+    if req.end_date <= OffsetDateTime::now_utc() + Duration::seconds(1) {
         return Err(AppError::bad_request(
             "End date must be at least 10 minutes in the future",
         ));
@@ -109,8 +96,30 @@ pub async fn create_market(
         SeedSide::No => onchain::Side::No,
     };
 
+    let memo_str = serde_urlencoded::to_string([
+        ("v","1"),
+        ("t","create_market"),
+        ("ca", cat_str(req.category)),
+        ("co", cmp_str(req.comparator)),
+        ("eD", &req.end_date.unix_timestamp().to_string()),
+        ("f",  &req.feed_id),
+        ("iL", &req.initial_liquidity.to_string()),
+        ("iS", if matches!(req.initial_side, SeedSide::Yes) { "yes" } else { "no" }),
+        ("mt", match req.market_type { MarketType::PriceThreshold => "threshold", MarketType::PriceRange => "range" }),
+        ("s",  &req.symbol),
+        ("lB", &req.lower_bound.map_or(String::new(), |x| x.to_string())),
+        ("uB", &req.upper_bound.map_or(String::new(), |x| x.to_string())),
+        ("th", &req.threshold.map_or(String::new(), |x| x.to_string())),
+    ]).map_err(|e| AppError::Other(anyhow!(e)))?;
+
+    tracing::info!("Create market memo: {}", memo_str.len());
+    if memo_str.len() > 560 {
+        return Err(AppError::bad_request("memo too long"));
+    }
+
     let create_tx_b64 = tokio::task::spawn_blocking({
         let ctx = ctx.clone();
+        let memo_owned = memo_str.clone();
         move || {
             anchor_client_::build_create_and_seed(
                 &ctx,
@@ -123,6 +132,7 @@ pub async fn create_market(
                 end_ts,
                 side_onchain,
                 amount_tokens,
+                Some(memo_owned.as_bytes()),
             )
         }
     })

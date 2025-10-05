@@ -1,11 +1,14 @@
-// app/layout.tsx (SERVER)
-import { Geist, Geist_Mono } from "next/font/google";
-import type { Metadata } from "next";
 import type React from "react";
-import { Toaster } from "@/components/ui/sonner";
-import "./globals.css";
+import type { Metadata } from "next";
 
 import ClientRoot from "@/components/providers/client-root";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
+
+import "./globals.css";
+
+import '@solana/wallet-adapter-react-ui/styles.css';
+import '@solana/wallet-adapter-react-ui/styles.css';
 
 const geistSans = Geist({ subsets: ["latin"], display: "swap", variable: "--font-geist-sans" });
 const geistMono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-geist-mono" });

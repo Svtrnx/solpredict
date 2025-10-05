@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/// Awards loyalty points for a placed bet.  
+/// Awards loyalty points for a placed bet 
 pub async fn award_bet_points(
     pool: &PgPool,
     wallet_address: &str, // base58 wallet address
@@ -17,19 +17,13 @@ pub async fn award_bet_points(
             .fetch_optional(pool)
             .await?;
 
-    // If wallet does not exist in the database, skip the point awarding
     let Some(wallet_id) = wallet_id else {
         return Ok(0);
     };
 
-    // Calculate the number of points to award.
-    // Formula: 1 point per $1 (in micro-units), with a minimum of 1 point.
     let points_delta: i64 = ((amount_1e6 as f64) / 1_000_000.0).round() as i64;
     let points_delta = points_delta.max(1);
 
-    // Attempt to insert a new points event.
-    // The operation is idempotent by (action, tx_sig, wallet_id),
-    // preventing duplicate entries for the same transaction.
     let inserted: Option<i64> = sqlx::query_scalar(
         r#"
             INSERT INTO points_events
@@ -48,7 +42,7 @@ pub async fn award_bet_points(
     .fetch_optional(pool)
     .await?;
 
-    // If the insert was successful, update the wallet’s aggregate points.
+    // If the insert was successful, update the wallet’s aggregate points
     if inserted.is_some() {
         sqlx::query(
             "UPDATE wallets

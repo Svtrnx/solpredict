@@ -1,9 +1,9 @@
 use axum::{Extension, Json, extract::{Path, State}, http::StatusCode};
+use crate::{middleware::auth::CurrentUser, state::SharedState};
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::repo::profile as profile_repo;
-use crate::{middleware::auth::CurrentUser, state::SharedState};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

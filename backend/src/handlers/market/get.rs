@@ -1,8 +1,8 @@
 use axum::{extract::{Path, State}, Json};
 
 use crate::{
-	state::SharedState, error::AppError,
 	handlers::market::types::{MarketDto},
+	state::SharedState, error::AppError,
 	repo::market as market_repo
 };
 

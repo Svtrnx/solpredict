@@ -2,7 +2,7 @@
 
 import axios from "axios";
 
-import { RawCreateRespSchema, ConfirmResolveFormData, ConfirmResolveResponseSchema, PrepareMarketResolveSchema, ConfirmResolveSchema, PrepareMarketResolveResponseSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse, PrepareMarketResolveFormData, PrepareMarketResolveResponse, TConfirmResolveResponse} from "@/lib/types";
+import { RawCreateRespSchema, ResolveIxBundleSchema, ResolveIxBundle, ResolveIxRequest, ResolveIxRequestSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse, ConfirmResolveRequest, ConfirmResolveResponse, ConfirmResolveRequestSchema, ConfirmResolveResponseSchema} from "@/lib/types";
 
 export type MarketsListParams = {
   limit?: number
@@ -13,28 +13,26 @@ export type MarketsListParams = {
   signal?: AbortSignal
 }
 
-export async function createMarket(
-  formData: CreateMarketFormData
-	): Promise<CreateMarketResponse> {
-		try {
-			const payload = CreateMarketSchema.parse(formData)
-			const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
-			payload,
-			{ 	
-				withCredentials: true, 
-				headers: { "Content-Type": "application/json" } 
-			}
-			)
-			const raw = RawCreateRespSchema.parse(data)
+export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse> {
+	try {
+		const payload = CreateMarketSchema.parse(formData)
+		const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets`,
+		payload,
+		{ 	
+			withCredentials: true, 
+			headers: { "Content-Type": "application/json" } 
+		}
+		)
+		const raw = RawCreateRespSchema.parse(data)
 
-			const tx = raw.tx ?? raw.createTx ?? raw.placeBetTx
-			if (!tx) throw new Error("Server didn't return a transaction.")
+		const tx = raw.tx ?? raw.createTx ?? raw.placeBetTx
+		if (!tx) throw new Error("Server didn't return a transaction.")
 
-			return { ok: raw.ok, marketId: raw.marketId, tx, message: raw.message ?? "" }
-		} catch (err) {
-			console.error("createMarket failed:", err)
-			throw err
-	}
+		return { ok: raw.ok, marketId: raw.marketId, tx, message: raw.message ?? "" }
+	} catch (err) {
+		console.error("createMarket failed:", err)
+		throw err
+}
 }
 
 export async function confirmMarket(
@@ -96,39 +94,43 @@ export async function getMarket(market_address: string) {
 	}
 }
 
-export async function prepareResolve(formData: PrepareMarketResolveFormData): Promise<PrepareMarketResolveResponse> {
+export async function resolveMarketIx(req: ResolveIxRequest): Promise<ResolveIxBundle> {
 	try {
-		const payload = PrepareMarketResolveSchema.parse(formData)
+		const payload = ResolveIxRequestSchema.parse(req);
 		const { data } = await axios.post(
-			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/build`,
-			payload,
+			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/ix`,
+				payload,
+			{
+				withCredentials: true,
+				headers: { "Content-Type": "application/json" },
+			}
+		);
+		const bundle = ResolveIxBundleSchema.parse(data);
+
+		if (!bundle.ok || bundle.instructions.length === 0) {
+			throw new Error(bundle.message || "Backend returned no instructions");
+		}
+		return bundle;
+	} catch (error: any) {
+		console.error("Failed to get /markets/resolve/ix", error);
+		throw error
+	}
+}
+
+export async function confirmResolveMarket(req: ConfirmResolveRequest): Promise<ConfirmResolveResponse> {
+	try {
+		const payload = ConfirmResolveRequestSchema.parse(req);
+		const { data } = await axios.post(
+			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/confirm`,
+				payload,
 			{ 
 				withCredentials: true, 
 				headers: { "Content-Type": "application/json" } 
 			}
 		);
-		return PrepareMarketResolveResponseSchema.parse(data)
-
-	} catch (error: any) {
-		console.error("Failed to get /markets/resolve/build", error);
-		throw error
-	}
-}
-
-export async function confirmResolve(formData: ConfirmResolveFormData): Promise<TConfirmResolveResponse> {
-	try {
-		const payload = ConfirmResolveSchema.parse(formData)
-		const { data } = await axios.post(
-			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/confirm`,
-			payload,
-			{ 
-				withCredentials: true,
-				headers: { "Content-Type": "application/json" } 
-			}
-		);
 		return ConfirmResolveResponseSchema.parse(data);
 	} catch (error: any) {
-		console.error("Failed to get /markets/resolve/confirm", error);
+		console.error("Failed to post /markets/resolve/confirm", error);
 		throw error
 	}
 }

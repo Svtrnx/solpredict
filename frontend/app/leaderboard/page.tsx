@@ -677,11 +677,11 @@ export default function LeaderboardPage() {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
       <div className="absolute inset-0 radial-glow"></div>
-      <div
+      {/* <div
         style={{ zIndex: 0 }}
         className="absolute top-20 left-20 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse [animation-duration:6s]"
       ></div>
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl animate-pulse delay-2000"></div>
       <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
         <div className="text-center space-y-4">

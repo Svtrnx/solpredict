@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    handlers::market::types::{generate_title, TitleSpec},
     repo::market as market_repo,
     state::SharedState,
-    handlers::market::types::{generate_title, TitleSpec}
 };
 
 

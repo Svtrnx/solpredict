@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveMarketIx, confirmResolveMarket } from "@/lib/services/market/marketService";
 import type { InstructionWithEphemeralSigners } from "@pythnetwork/pyth-solana-receiver";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 import {
@@ -57,15 +58,6 @@ function installPythShimsOnce() {
 // ─────────────────────────────────────────────────────────────
 type IxAccountMetaJson = { pubkey: string; is_signer: boolean; is_writable: boolean };
 type IxJson = { program_id: string; accounts: IxAccountMetaJson[]; data_b64: string };
-type ResolveIxBundle = {
-  ok: boolean;
-  market_id: string;
-  end_ts: number;
-  feed_id_hex: string;        // "0x — Pyth price ID
-  price_update_index: number;
-  instructions: IxJson[];
-  message: string;
-};
 
 // ─────────────────────────────────────────────────────────────
 // Utilities
@@ -93,17 +85,6 @@ function ixFromJson(
   });
   const data = Buffer.from(j.data_b64, "base64");
   return new TransactionInstruction({ programId, keys, data });
-}
-
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    credentials: "include",
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
-  return r.json();
 }
 
 async function signOneTx(
@@ -145,7 +126,7 @@ export async function resolveMarketWithPyth(opts: {
     cuPriceMicroLamports = 50_000,
     closeUpdateAccounts = false,
   } = opts;
-
+  
   if (!walletAdapter?.publicKey) throw new Error("Wallet not connected");
   if (!walletAdapter?.signTransaction) throw new Error("Wallet lacks signTransaction()");
 
@@ -159,17 +140,14 @@ export async function resolveMarketWithPyth(opts: {
   const anchorWallet = toAnchorWallet(walletAdapter);
 
   // ix bundle form backend
-  const bundle = await postJson<ResolveIxBundle>(
-    `${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/ix`,
-    { market_pda: marketPda }
-  );
+  const bundle = await resolveMarketIx({ market_pda: marketPda });
   if (!bundle?.ok || !bundle.instructions?.length) {
     throw new Error(`Backend not ok: ${bundle?.message ?? "no instructions"}`);
   }
 
-  // Hermes → base64 price updates
   const hermes = new HermesClient("https://hermes.pyth.network", {});
   const resp = await hermes.getPriceUpdatesAtTimestamp(bundle.end_ts, [bundle.feed_id_hex], { encoding: "base64"});
+
   const priceUpdateData: string[] = resp?.binary?.data ?? [];
   if (!priceUpdateData.length) throw new Error("Hermes returned empty price updates");
 
@@ -227,6 +205,12 @@ export async function resolveMarketWithPyth(opts: {
   const resolveSig = await signOneTx(connection, walletAdapter, resolveWrap, "resolve");
   await connection.confirmTransaction(resolveSig, "confirmed");
   sigs.push(resolveSig);
+
+  // try {
+  //   await confirmResolveMarket({ market_pda: marketPda, tx_sig: resolveSig });
+  // } catch (e) {
+  //   console.error("confirmResolveMarket() exception:", e);
+  // }
 
   return sigs;
 }

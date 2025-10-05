@@ -1,34 +1,36 @@
+use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
 use std::{collections::HashMap, sync::Arc};
+use once_cell::sync::OnceCell;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
-use crate::db::Db;
 use crate::solana::anchor_client::AnchorCtx;
-use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
+use crate::db::Db;
 
-// Global application state shared across all handlers
 pub struct AppState {
-    // Nonces for SIWS (Sign-In With Solana) login, with expiry
+    // ===== SIWS / auth =====
     pub nonces: Mutex<HashMap<String, OffsetDateTime>>,
-    // Secret key for JWT signing/validation
     pub jwt_secret: String,
-    // Frontend domain
     pub domain: String,
-    // Frontend URI
     pub uri: String,
-    // Database connection pool
-    pub db: Db,
 
+    // ===== Infrastructure =====
+    pub db: Db,
     pub rpc: RpcClient,
-    // Anchor client context for Solana program
+    pub rpc_url: String,
+
+    // ===== Solana/Program config =====
+    pub program_id: String,
+    pub memo_program: String, 
+    pub usdc_mint: String, 
+
+    // ===== Anchor ctx =====
     pub anchor: Arc<AnchorCtx>,
 }
 
-// Type alias for shared reference-counted state
 pub type SharedState = Arc<AppState>;
 
 impl AppState {
-    // Constructor: wrap everything in Arc for thread-safe sharing
     pub fn new(
         domain: impl Into<String>,
         uri: impl Into<String>,
@@ -36,9 +38,22 @@ impl AppState {
         db: Db,
         anchor: Arc<AnchorCtx>,
     ) -> SharedState {
+        let _ = dotenvy::dotenv();
+
         let rpc_url = std::env::var("SOLANA_RPC")
             .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string());
-        let rpc = RpcClient::new(rpc_url);
+        let rpc = RpcClient::new(rpc_url.clone());
+
+        let program_id = std::env::var("PREDICTION_PROGRAM_ID")
+            .unwrap_or_else(|_| "HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ".to_string());
+
+        let memo_program = std::env::var("MEMO_PROGRAM")
+            .ok()
+            .unwrap_or_else(|| spl_memo::id().to_string());
+
+        let usdc_mint = std::env::var("USDC_MINT")
+            .unwrap_or_else(|_| "5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh".to_string());
+
         Arc::new(AppState {
             nonces: Mutex::new(HashMap::new()),
             jwt_secret: jwt_secret.into(),
@@ -46,7 +61,21 @@ impl AppState {
             uri: uri.into(),
             db,
             rpc,
+            rpc_url,
+            program_id,
+            memo_program,
+            usdc_mint,
             anchor,
         })
     }
+}
+
+static APP_STATE: OnceCell<SharedState> = OnceCell::new();
+
+pub fn init_global(state: SharedState) { 
+    let _ = APP_STATE.set(state); 
+}
+
+pub fn global() -> &'static SharedState { 
+    APP_STATE.get().expect("APP_STATE not initialized") 
 }

@@ -1,14 +1,13 @@
-// Config init
-use anyhow::Result;
 use std::str::FromStr;
+use anyhow::Result;
 
+use solpredict::solana::anchor_client as anchor_client_;
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use solpredict::solana::anchor_client as ac;
 
 fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
-    let ctx = ac::connect_devnet()?;
+    let ctx = anchor_client_::connect_devnet()?;
 
     let admin = &*ctx.payer;
 
@@ -18,7 +17,7 @@ fn main() -> Result<()> {
     let resolver_bps: u16 = std::env::var("RESOLVER_BPS").expect("set RESOLVER_BPS").parse()?;
     let tip_cap: u64 = std::env::var("TIP_CAP").expect("set TIP_CAP").parse()?;
 
-    let sig = ac::init_config(&ctx, admin, treasury, fee_bps, resolver_bps, tip_cap)?;
+    let sig = anchor_client_::init_config(&ctx, admin, treasury, fee_bps, resolver_bps, tip_cap)?;
     println!("init_config OK: {}", sig);
 
     Ok(())

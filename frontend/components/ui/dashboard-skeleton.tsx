@@ -5,17 +5,17 @@ export function DashboardSkeleton() {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
       <div className="absolute inset-0 radial-glow"></div>
-      <div
+      {/* <div
         style={{ zIndex: 0 }}
         className="absolute top-20 left-20 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse [animation-duration:6s]"
-      ></div>
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      ></div> */}
+      {/* <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
       <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* User Profile Card */}
           <Card className="glass glow relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-cyan-500/10"></div>
+            {/* <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-cyan-500/10"></div> */}
             <CardContent className="pt-6 relative z-10">
               <div className="flex flex-col items-center space-y-4">
                 <div className="relative">

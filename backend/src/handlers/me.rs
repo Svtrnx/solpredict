@@ -1,7 +1,6 @@
-// handlers/me.rs
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use axum_extra::extract::cookie::CookieJar;
 use jsonwebtoken::{DecodingKey, Validation, decode};
+use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
 
 use crate::{state::SharedState};

@@ -17,7 +17,7 @@ function getBetUrgency(endDate: string) {
   const now = Date.now()
   const diffMs = end - now
   const diffHours = diffMs / (1000 * 60 * 60)
-  const diffDays = diffMs / (1000 * 60 * 60 * 24)
+  // const diffDays = diffMs / (1000 * 60 * 60 * 24)
 
   if (diffMs <= 0) {
     return "urgent"

@@ -36,10 +36,10 @@ import {
 } from "lucide-react"
 
 import { AIVsHumansSkeleton, ChartSkeleton, InsightsSkeleton, CountdownSkeleton, PriceCardSkeleton, BettingCardSkeleton } from "./skeletons"
-import { prepareBet, confirmBet } from "@/lib/services/bet/betsService"
 import {cn, fmtCents, fmtCompact, fmtPercent, diff } from "@/lib/utils"
 import { getMarket } from "@/lib/services/market/marketService"
 import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
+import { prepareBet } from "@/lib/services/bet/betsService"
 import { showToast } from "@/components/shared/show-toast"
 import { useMobile } from "@/hooks/use-mobile"
 import { Market, TimeLeft } from "@/lib/types"
@@ -232,23 +232,12 @@ export default function MarketPage() {
 
       // sign & send
       const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection);
-      showToast("success", `Transaction sent: ${sig}`);
+      showToast("success", `Transaction sent: ${sig} | Bet placed!`);
 
-      // confirm
-      try {
-        await confirmBet({
-          market_pda: market_pda,
-          side: selectedSide,
-          amount_ui: amount,
-          signature: sig,
-        });
-      } catch (e) {
-        console.warn("confirm failed", e);
-      }
 
       setBetAmount("");
       setSelectedSide(null);
-      showToast("success", "Bet placed!");
+      // showToast("success", "Bet placed!");
 
       const fresh = await getMarket(market_pda);
       setMarket(fresh);
@@ -373,8 +362,8 @@ export default function MarketPage() {
     return (
       <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
         <div className="absolute inset-0 radial-glow"></div>
-        <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        {/* <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
         <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
           <div className="space-y-4">
@@ -458,8 +447,8 @@ export default function MarketPage() {
   return (
     <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
       <div className="absolute inset-0 radial-glow"></div>
-      <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      {/* <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
       <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
         <div className="space-y-4">
@@ -474,7 +463,7 @@ export default function MarketPage() {
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight">{market.title}</h1>
-          <p className="text-lg text-muted-foreground max-w-4xl">{market.description}</p>
+          {/* <p className="text-lg text-muted-foreground max-w-4xl">{market.description}</p> */}
         </div>
         <Button onClick={handleResolve} className="w-100 cursor-pointer">Resolve Market</Button>
         <CountdownTimer endAt={market.endDate} />

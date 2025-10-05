@@ -1,13 +1,14 @@
-use axum::{
-    body::Body,
-    extract::State,
-    http::{Request, StatusCode, header},
-    middleware::Next,
-    response::IntoResponse,
-};
-use axum_extra::extract::cookie::Cookie;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use axum_extra::extract::cookie::Cookie;
 use serde::Deserialize;
+
+use axum::{
+    http::{Request, StatusCode, header},
+    response::IntoResponse,
+    middleware::Next,
+    extract::State,
+    body::Body,
+};
 
 use crate::state::SharedState;
 

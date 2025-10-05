@@ -1,12 +1,13 @@
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use serde::{Deserialize, Serialize};
+use axum_extra::extract::CookieJar;
+use serde_json::Number;
+
 use axum::{
     Json,
     extract::{Query, State},
     http::StatusCode,
 };
-use axum_extra::extract::CookieJar;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
-use serde::{Deserialize, Serialize};
-use serde_json::Number;
 
 use crate::{
     repo::bets as bets_repo,

@@ -1,21 +1,21 @@
 use crate::ai::parse::extract_last_probability;
-use axum::http::StatusCode;
-use cookie::Cookie;
-use reqwest::{Client, Url, header};
-use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
+use reqwest::{Client, header};
 use serde_json::{Value, json};
-use std::sync::Arc;
+use axum::http::StatusCode;
 use uuid::Uuid;
 
-fn make_client_with_cookies() -> (Client, Arc<CookieStoreMutex>) {
-    let jar = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-    let client = Client::builder()
-        .cookie_provider(jar.clone())
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-        .build()
-        .expect("reqwest client");
-    (client, jar)
-}
+// use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
+// use std::sync::Arc;
+
+// fn make_client_with_cookies() -> (Client, Arc<CookieStoreMutex>) {
+//     let jar = Arc::new(CookieStoreMutex::new(CookieStore::default()));
+//     let client = Client::builder()
+//         .cookie_provider(jar.clone())
+//         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+//         .build()
+//         .expect("reqwest client");
+//     (client, jar)
+// }
 
 fn http_err<E: std::fmt::Display>(code: StatusCode, e: E) -> (StatusCode, String) {
     (code, e.to_string())

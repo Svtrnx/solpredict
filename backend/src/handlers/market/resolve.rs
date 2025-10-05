@@ -1,15 +1,15 @@
 use axum::{Json, extract::State, http::HeaderMap};
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use serde::{Deserialize};
+use std::str::FromStr;
 
 use crate::{
-    error::AppError,
-    state::SharedState,
+    handlers::market::types::current_user_pubkey,
     solana::anchor_client as anchor_client_,
     types::ix::ResolveIxBundle,
-    handlers::market::types::current_user_pubkey
+    state::SharedState,
+    error::AppError,
 };
-use anchor_client::solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 
 // Request / Response
 #[derive(Deserialize)]
@@ -17,10 +17,6 @@ pub struct ResolveIxRequest {
     pub market_pda: String,
 }
 
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Handler: /markets/resolve/ix
-// ──────────────────────────────────────────────────────────────────────────────
 pub async fn build_resolve_ix(
     State(state): State<SharedState>,
     headers: HeaderMap,
@@ -39,7 +35,3 @@ pub async fn build_resolve_ix(
 
     Ok(Json(bundle))
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Handler: /markets/resolve/
-// ──────────────────────────────────────────────────────────────────────────────

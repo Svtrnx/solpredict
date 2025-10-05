@@ -78,8 +78,8 @@ export default function CreateMarketPage() {
     getPythFeeds()
       .then(setPythFeeds)
       .catch((e: any) => console.error("Failed to load Pyth feeds", e))
-      // const devTime = new Date(Date.now() + 13 * 60 * 1000)
-      // formData.endDate = devTime
+      const devTime = new Date(Date.now() + 1 * 60 * 1000)
+      formData.endDate = devTime
   }, [])
 
   const validateForm = () => {
@@ -255,11 +255,11 @@ export default function CreateMarketPage() {
       const sig = await signAndSendBase64Tx(tx, wallet, connection)
       showToast("success", `Transaction sent: ${sig}`)
 
-      try {
-        await confirmMarket(formData_, marketId, sig)
-      } catch (e) {
-        console.warn("confirm failed", e)
-      }
+      // try {
+      //   await confirmMarket(formData_, marketId, sig)
+      // } catch (e) {
+      //   console.warn("confirm failed", e)
+      // }
       showToast("success", `Market ${marketId} created!`)
     } catch (err: any) {
       const msg = String(err?.message ?? err)
@@ -277,7 +277,7 @@ export default function CreateMarketPage() {
     <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
       <div className="absolute inset-0 radial-glow"></div>
       {/* <div className="absolute top-20 left-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-3000"></div> */}
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      {/* <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
       <div className="relative z-10 max-w-4xl mx-auto p-6 space-y-8">
         {/* Page Header */}

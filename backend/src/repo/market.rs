@@ -1,7 +1,7 @@
-use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row, postgres::PgRow};
+use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::handlers::market::types::{Comparator, CreateMarketRequest, MarketCategory, MarketType};
@@ -59,6 +59,26 @@ pub struct MarketViewRow {
     pub status: String,
     pub price_feed_account: String,
     pub end_date_utc: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolveSnapshot {
+    pub settled: bool,                   
+    pub winning_side: Option<i16>, 
+    pub resolved_price_1e6: Option<i64>,
+    pub payout_pool_1e6: Option<i64>,
+    pub resolver_pubkey: String,
+    pub tx_sig_resolve: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfirmResolveRow {
+    pub market_id: String,
+    pub status: String,
+    pub winning_side: Option<i16>,
+    pub resolved_price_1e6: Option<i64>,
+    pub payout_pool_1e6: Option<i64>,
+    pub tx_sig_resolve: Option<String>,
 }
 
 pub struct MarketsPage {
@@ -148,6 +168,8 @@ pub async fn upsert_initial_state(
     no_total_1e6: i64,
     participants: i32,
 ) -> anyhow::Result<()> {
+    tracing::info!("Upserting initial market_state");
+    tracing::info!("yes_total_1e6={} no_total_1e6={} participants={}", yes_total_1e6, no_total_1e6, participants);
     let total = yes_total_1e6 + no_total_1e6;
 
     sqlx::query(
@@ -224,8 +246,6 @@ pub async fn fetch_markets_page(
             cmp: ">",
         },
     };
-    let dir = if plan.asc { "ASC" } else { "DESC" };
-
     // Decode cursor "{key}|{uuid}" and parse key based on current sort
     enum CurVal {
         Dt(DateTime<Utc>),
@@ -381,4 +401,79 @@ pub async fn fetch_by_pda(
     .fetch_optional(pool)
     .await?;
     Ok(row)
+}
+
+pub async fn confirm_resolve_persist(
+    pool: &PgPool,
+    market_id: Uuid,
+    snap: &ResolveSnapshot,
+) -> anyhow::Result<ConfirmResolveRow> {
+
+    let mut tx = pool.begin().await.context("begin tx failed")?;
+
+    // UPSERT market_state
+    sqlx::query(
+        r#"
+        INSERT INTO market_state (
+            market_id, settled, winning_side, resolved_price_1e6, payout_pool_1e6,
+            resolver_pubkey, tx_sig_resolve, updated_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+        ON CONFLICT (market_id) DO UPDATE SET
+            settled            = EXCLUDED.settled,
+            winning_side       = EXCLUDED.winning_side,
+            resolved_price_1e6 = EXCLUDED.resolved_price_1e6,
+            payout_pool_1e6    = EXCLUDED.payout_pool_1e6,
+            resolver_pubkey    = EXCLUDED.resolver_pubkey,
+            tx_sig_resolve     = EXCLUDED.tx_sig_resolve,
+            updated_at         = now()
+        "#,
+    )
+    .bind(market_id)
+    .bind(snap.settled)
+    .bind(snap.winning_side)
+    .bind(snap.resolved_price_1e6)
+    .bind(snap.payout_pool_1e6)
+    .bind(&snap.resolver_pubkey)
+    .bind(&snap.tx_sig_resolve)
+    .execute(&mut *tx)
+    .await
+    .context("upsert market_state failed")?;
+
+    // touch markets.updated_at
+    sqlx::query(r#"UPDATE markets SET updated_at = now() WHERE id = $1"#)
+        .bind(market_id)
+        .execute(&mut *tx)
+        .await
+        .context("touch markets.updated_at failed")?;
+
+    // SELECT from market_view
+    let r = sqlx::query(
+        r#"
+        SELECT
+            id::text        AS market_id,
+            status,
+            winning_side,
+            resolved_price_1e6,
+            payout_pool_1e6,
+            tx_sig_resolve
+        FROM market_view
+        WHERE id = $1
+        "#,
+    )
+    .bind(market_id)
+    .fetch_one(&mut *tx)
+    .await
+    .context("select from market_view failed")?;
+
+    tx.commit().await.context("commit tx failed")?;
+
+    Ok(ConfirmResolveRow {
+        market_id: r.try_get::<String, _>("market_id")?,
+        status: r.try_get::<String, _>("status")?,
+        winning_side: r.try_get::<Option<i16>, _>("winning_side")?,
+        resolved_price_1e6: r.try_get::<Option<i64>, _>("resolved_price_1e6")?,
+        payout_pool_1e6: r.try_get::<Option<i64>, _>("payout_pool_1e6")?,
+        tx_sig_resolve: r.try_get::<Option<String>, _>("tx_sig_resolve")?,
+    })
 }

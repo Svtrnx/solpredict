@@ -1,34 +1,39 @@
-use anchor_client::anchor_lang::InstructionData;
 use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
 use anchor_client::solana_sdk::commitment_config::CommitmentConfig;
+use anchor_client::anchor_lang::InstructionData;
 use anchor_client::solana_sdk::sysvar;
 use anchor_client::solana_sdk::{
-    hash::Hash,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
     signature::{Signature, read_keypair_file},
+    instruction::{AccountMeta, Instruction},
     signer::{Signer, keypair::Keypair},
-    system_program,
     transaction::Transaction,
+    pubkey::Pubkey,
+    system_program,
+    hash::Hash,
 };
-use anchor_client::{Client, Cluster, Program};
-use anchor_spl::associated_token::{
-    self, ID as ASSOCIATED_TOKEN_PROGRAM_ID, get_associated_token_address,
-};
-use anchor_spl::token::{self, ID as TOKEN_PROGRAM_ID};
-use anyhow::{Context, Result};
-use base64::{Engine, engine::general_purpose};
-use bincode::{config::standard, serde::encode_to_vec};
-use prediction_market_program as onchain;
-use spl_associated_token_account::instruction as ata_ix;
 
-use spl_memo::build_memo;
-use std::sync::Arc;
+use spl_associated_token_account::instruction as ata_ix;
+use anchor_spl::{
+    token::{
+        self, ID as TOKEN_PROGRAM_ID
+    },
+    associated_token::{
+        self, ID as ASSOCIATED_TOKEN_PROGRAM_ID, get_associated_token_address
+    },
+};
+
+use bincode::{config::standard, serde::encode_to_vec};
+use anchor_client::{Client, Cluster, Program};
+use base64::{Engine, engine::general_purpose};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{str::FromStr, time::Duration};
+use anyhow::{Context, Result};
+use spl_memo::build_memo;
 use tokio::time::sleep;
+use std::sync::Arc;
 
-use crate::types::ix::{IxAccountMetaJson, IxJson, ResolveIxBundle};
+use crate::{types::ix::{IxAccountMetaJson, IxJson, ResolveIxBundle}, state};
+use prediction_market_program as onchain;
 
 pub struct AnchorCtx {
     pub client: Client<Arc<Keypair>>,
@@ -58,9 +63,8 @@ const MAX_ATTEMPTS: usize = 30;
 
 pub async fn wait_for_confirmation(sig_str: &str, rpc: &RpcClient) -> Result<()> {
     let sig = Signature::from_str(sig_str).context("invalid signature format")?;
-    // let rpc = RpcClient::new(rpc_url.to_string());
 
-    for attempt in 1..=MAX_ATTEMPTS {
+    for _ in 1..=MAX_ATTEMPTS {
         let statuses = rpc
             .get_signature_statuses(&[sig])
             .await
@@ -113,6 +117,59 @@ pub fn encode_unsigned_tx(tx: &Transaction) -> anyhow::Result<String> {
     Ok(general_purpose::STANDARD.encode(bytes))
 }
 
+// ─────────────────────────────────────────────────────────────
+// Thin helpers: PDAs & account fetch
+// ─────────────────────────────────────────────────────────────
+
+pub fn get_market_account(ctx: &AnchorCtx, market_pda: Pubkey) -> anyhow::Result<onchain::Market> {
+    let program = program(ctx)?;
+    let acc: onchain::Market = program
+        .account(market_pda)
+        .map_err(|e| anyhow::anyhow!("market account fetch failed: {e}"))?;
+    Ok(acc)
+}
+
+pub async fn fetch_market_account(
+    ctx: Arc<AnchorCtx>,
+    market_pda: Pubkey,
+) -> anyhow::Result<onchain::Market> {
+    tokio::task::spawn_blocking(move || get_market_account(ctx.as_ref(), market_pda))
+        .await
+        .map_err(|e| anyhow::anyhow!("join error: {e}"))?
+}
+
+#[derive(Debug, Clone)]
+pub struct MarketSnapshot {
+    pub settled: bool,
+    pub winning_side: Option<i16>,      // 1=YES, 2=NO, 3=VOID
+    pub resolved_price_1e6: Option<i64>,
+    pub payout_pool_1e6: Option<i64>,
+}
+
+pub fn snapshot_from_market(m: &onchain::Market) -> MarketSnapshot {
+    let winning_side: Option<i16> = if m.settled {
+        match m.winning_side {
+            1 => Some(1), // YES
+            2 => Some(2), // NO
+            3 => Some(3), // VOID
+            _ => None,
+        }
+    } else { None };
+
+    let resolved_price_1e6 = if m.resolved_price_1e6 == 0 { None } else { Some(m.resolved_price_1e6) };
+    let payout_pool_1e6    = Some(m.payout_pool as i64);
+
+    MarketSnapshot { settled: m.settled, winning_side, resolved_price_1e6, payout_pool_1e6 }
+}
+
+pub async fn fetch_market_snapshot(
+    ctx: std::sync::Arc<AnchorCtx>,
+    market_pda: Pubkey,
+) -> anyhow::Result<MarketSnapshot> {
+    let m = fetch_market_account(ctx, market_pda).await?;
+    Ok(snapshot_from_market(&m))
+}
+
 // ==== Connection / Program ====
 
 pub fn connect_devnet() -> Result<AnchorCtx> {
@@ -140,10 +197,10 @@ fn program(ctx: &AnchorCtx) -> anyhow::Result<Program<Arc<Keypair>>> {
 }
 
 // ==== Devnet USDC airdrop (only one time) ====
-
 pub fn airdrop_usdc_once(ctx: &AnchorCtx, user: Pubkey) -> anyhow::Result<Signature> {
+    let state = state::global();
     let program = program(ctx)?;
-    let mint = Pubkey::from_str("5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh")?;
+    let mint = Pubkey::from_str(&state.usdc_mint)?;
 
     let (mint_auth_pda, _) = Pubkey::find_program_address(&[b"mint-auth"], &onchain::ID);
     let (claim_pda, _) = Pubkey::find_program_address(&[b"claim", user.as_ref()], &onchain::ID);
@@ -172,8 +229,9 @@ pub fn airdrop_usdc_once(ctx: &AnchorCtx, user: Pubkey) -> anyhow::Result<Signat
 // ==== Token metadata (Metaplex) USDC Mint ====
 
 pub fn set_token_metadata(ctx: &AnchorCtx, uri: &str) -> anyhow::Result<Signature> {
+    let state = state::global();
     let program = program(ctx)?;
-    let mint = Pubkey::from_str("5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh")?;
+    let mint = Pubkey::from_str(&state.usdc_mint)?;
     let (mint_auth_pda, _) = Pubkey::find_program_address(&[b"mint-auth"], &onchain::ID);
 
     // Metaplex Token Metadata program id
@@ -325,6 +383,7 @@ pub fn build_create_and_seed(
     end_ts: i64,
     seed_side: onchain::Side, // Yes / No
     seed_amount: u64,         // 1e6 (USDC decimals)
+    memo_opt: Option<&[u8]>,
 ) -> anyhow::Result<String> {
     let program = program(ctx)?;
     let mint = onchain::USDC_MINT;
@@ -393,8 +452,10 @@ pub fn build_create_and_seed(
         ixs.append(&mut place_ixs);
     }
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-    let memo_str = format!("solpredict:{ts}");
-    ixs.push(build_memo(memo_str.as_bytes(), &[]));
+
+    if let Some(memo_bytes) = memo_opt {
+        ixs.push(build_memo(memo_bytes, &[]));
+    }
 
     // Single unsigned transaction (payer = user)
     let bh = latest_blockhash(&program)?;
@@ -414,10 +475,9 @@ pub fn build_resolve(
     end_ts: i64,
     price_update: Pubkey,
 ) -> anyhow::Result<String> {
+    let state = state::global();
     let program = program(ctx)?;
-    let mint: Pubkey = "5WVkLTcYYSKaYG7hFc69ysioBRGPxA4KgreQDQ7wJTMh"
-        .parse()
-        .unwrap();
+    let mint = Pubkey::from_str(&state.usdc_mint)?;
 
     let (market_pda, _) = pda_market(&market_authority, &feed_id, end_ts);
     let market_acc: onchain::Market = program.account(market_pda)?;
