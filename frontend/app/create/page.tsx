@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-import { createMarket, confirmMarket } from "@/lib/services/market/marketService"
+import { createMarket } from "@/lib/services/market/marketService"
 import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
 import { getPythFeeds } from "@/lib/services/pyth/feedService"
 import { showToast } from "@/components/shared/show-toast"
@@ -78,7 +78,7 @@ export default function CreateMarketPage() {
     getPythFeeds()
       .then(setPythFeeds)
       .catch((e: any) => console.error("Failed to load Pyth feeds", e))
-      const devTime = new Date(Date.now() + 1 * 60 * 1000)
+      const devTime = new Date(Date.now() + 3 * 60 * 1000)
       formData.endDate = devTime
   }, [])
 

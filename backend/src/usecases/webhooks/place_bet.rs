@@ -102,7 +102,7 @@ pub async fn handle(
     }
 
     tracing::info!(
-        "🧾 place_bet sig={} slot={} market={} user={} amount_usdc=0 memo={:?} (feePayer={})",
+        "place_bet sig={} slot={} market={} user={} amount_usdc=0 memo={:?} (feePayer={})",
         signature, slot, market_pda, user_from_accounts, memo, fee_payer
     );
 

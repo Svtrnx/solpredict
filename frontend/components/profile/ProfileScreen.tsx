@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Copy, Shield, Star, Target } from "lucide-react";
+import { Copy, Shield, Star, Flame } from "lucide-react";
 
 import { DashboardSkeleton, ProfileActiveBetsSkeleton } from "@/components/ui/dashboard-skeleton";
 import { ActiveBetsTab } from "@/components/shared/active-bets-tab";
@@ -68,6 +68,17 @@ const getLevelInfo = (points: number) => {
 };
 
 
+  const getStreakStyle = (streak: number) => {
+    if (streak >= 10) return "border-orange-500/30 bg-orange-500/5"
+    if (streak >= 5) return "border-amber-500/30 bg-amber-500/5"
+    return "border-border bg-muted/30"
+  }
+
+  const getStreakIconColor = (streak: number) => {
+    if (streak >= 10) return "text-orange-500"
+    if (streak >= 5) return "text-amber-500"
+    return "text-muted-foreground"
+  }
 // -------------------- Component --------------------
 
 export default function ProfileScreen({
@@ -216,14 +227,33 @@ export default function ProfileScreen({
                           </div>
                         </div>
 
-                      <div className="flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-lg p-3 border border-orange-500/30 glow">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
-                          <Target className="w-5 h-5 text-orange-400" />
+                      <div
+                        className={`
+                          flex items-center justify-between text-sm rounded-md px-4 py-2.5 border
+                          transition-all duration-300
+                          ${getStreakStyle(user.streak)}
+                        `}
+                      >
+                        <span className="text-muted-foreground font-medium">Win Streak</span>
+                        <div className="flex items-center gap-2.5">
+                          <div className="relative">
+                            <Flame className={`w-4 h-4 ${getStreakIconColor(user.streak)} transition-colors`} />
+                            {user.streak >= 5 && (
+                              <div className={`absolute inset-0 ${getStreakIconColor(user.streak)} opacity-20 blur-sm`}>
+                                <Flame className="w-4 h-4" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-foreground font-bold tabular-nums text-base">{user.streak}</span>
+                          {user.streak >= 10 && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-1 px-1.5 py-0 text-[10px] font-bold border-orange-500/30 bg-orange-500/10 text-orange-600"
+                            >
+                              HOT
+                            </Badge>
+                          )}
                         </div>
-                        <span className="text-lg font-bold text-orange-400">{user.streak}</span>
-                        <span className="text-sm text-orange-300">Win Streak</span>
-                        <div className="text-lg animate-pulse">🔥</div>
                       </div>
                     </div>
 
@@ -254,16 +284,11 @@ export default function ProfileScreen({
                 <ProfileActiveBetsSkeleton />
               ) : sortedActiveBets.length === 0 ? (
                 // <EmptyState title="No active bets" subtitle="Make your first prediction to see it here." />
-                <div>No tasks yet</div>
+                <div>No bets yet</div>
               ) : (
                 <>
                   <ActiveBetsTab activeBets={sortedActiveBets} />
                   <LoadMoreButton query={activeQ} />
-                  {/* <PaginationComponent
-                    pagination={activePagination}
-                    onPageChange={(page) => loadBets("active", page)}
-                    type="active bets"
-                  /> */}
                 </>
               )}
             </TabsContent>
@@ -295,11 +320,6 @@ export default function ProfileScreen({
                 <>
                   <HistoryBetsTab historyBets={historyItems} />
                   <LoadMoreButton query={historyQ} />
-                  {/* <PaginationComponent
-                    pagination={historyPagination}
-                    onPageChange={(page) => loadBets("history", page)}
-                    type="history bets"
-                  /> */}
                 </>
               )}
             </TabsContent>

@@ -60,7 +60,6 @@ export const RawCreateRespSchema = z.object({
   createTx: z.string().optional(),
   placeBetTx: z.string().optional(),
 })
-// type RawCreateResp = z.infer<typeof RawCreateRespSchema>
 
 export const ListMarketSchema = z.object({
   id: z.union([z.string(), z.number()]),
@@ -139,20 +138,14 @@ export const ResolveIxBundleSchema = z.object({
 });
 export type ResolveIxBundle = z.infer<typeof ResolveIxBundleSchema>;
 
-export const ConfirmResolveRequestSchema = z.object({
-  market_pda: Base58Pubkey,
-  tx_sig: Base58Signature,
-});
-export type ConfirmResolveRequest = z.infer<typeof ConfirmResolveRequestSchema>;
 
-// Response
-export const ConfirmResolveResponseSchema = z.object({
-  ok: z.boolean(),
-  market_id: Base58Pubkey,
-  status: z.string(),
-  winning_side: z.number().int().min(1).max(3).nullable().optional(),
-  resolved_price_1e6: z.number().int().nullable().optional(),
-  payout_pool_1e6: z.number().int().nullable().optional(),
-  tx_sig_resolve: z.string().nullable().optional(),
+export const PrepareClaimSchema = z.object({
+  market_pda: z.string().min(32).max(64),
 });
-export type ConfirmResolveResponse = z.infer<typeof ConfirmResolveResponseSchema>;
+export type PrepareClaimPayload = z.infer<typeof PrepareClaimSchema>;
+
+export const PrepareClaimResponseSchema = z.object({
+  ok: z.boolean(),
+  tx_base64: z.string(),
+});
+export type PrepareClaimResponse = z.infer<typeof PrepareClaimResponseSchema>;

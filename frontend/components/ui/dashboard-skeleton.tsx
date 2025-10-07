@@ -46,16 +46,11 @@ export function DashboardSkeleton() {
                       </div>
                     </div>
 
-                    <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-lg p-3 border border-orange-500/30 relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-orange-400/10 to-transparent animate-pulse"></div>
-                      <div className="flex items-center justify-center space-x-3 relative z-10">
-                        <div className="flex items-center space-x-2">
-                          <PulseSkeleton className="w-3 h-3 rounded-full bg-orange-400/30" delay={700} />
-                          <PulseSkeleton className="w-5 h-5 rounded-full bg-orange-400/20" delay={750} />
-                        </div>
-                        <PulseSkeleton className="h-6 w-8 bg-orange-400/30" delay={800} />
-                        <PulseSkeleton className="h-4 w-20 bg-orange-300/20" delay={850} />
-                        <PulseSkeleton className="w-6 h-6 rounded-full bg-orange-400/30" delay={900} />
+                    <div className="bg-gradient-to-r from-muted-500/5 to-red-500/5 rounded-lg p-4 border border-muted-500/5 relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-muted-400/10 to-transparent animate-pulse"></div>
+                      <div className="flex justify-between space-x-3 relative z-10">
+                          <PulseSkeleton className="h-3 w-12 bg-orange-400/8" delay={800} />
+                          <PulseSkeleton className="w-5 h-3 rounded-full bg-orange-400/8" delay={700} />
                       </div>
                     </div>
                   </div>
@@ -171,56 +166,132 @@ export function DashboardSkeleton() {
 
 export function ProfileActiveBetsSkeleton() {
   return (
-    <div className="space-y-4">
-      {[...Array(8)].map((_, i) => (
-        <Card key={i} className="glass glow relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-cyan-500/5"></div>
-          <CardContent className="pt-6 relative z-10">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-              <div className="lg:col-span-2 space-y-3">
-                <ShimmerSkeleton className="h-5 w-full" />
-                <div className="flex items-center space-x-2">
-                  <PulseSkeleton
-                    className="h-6 w-16 rounded-full bg-emerald-500/20 border border-emerald-500/30"
-                    delay={i * 200}
-                  />
-                  <PulseSkeleton
-                    className="h-6 w-16 rounded-full bg-red-500/20 border border-red-500/30"
-                    delay={i * 200 + 100}
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <PulseSkeleton className="h-6 w-12 rounded-full bg-purple-500/20" delay={i * 200 + 200} />
-                  <PulseSkeleton className="h-4 w-20" delay={i * 200 + 300} />
-                </div>
-              </div>
+    <div className="grid gap-3">
+      {[...Array(8)].map((_, i) => {
+        // Vary the skeleton types: some with claim banners, some with urgency banners, some normal
+        const skeletonType = i % 3 === 0 ? "claim" : i % 3 === 1 ? "urgent" : "normal"
 
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <PulseSkeleton className="h-3 w-8" delay={i * 200 + 400} />
-                  <PulseSkeleton className="h-4 w-16" delay={i * 200 + 500} />
+        return (
+          <Card
+            key={i}
+            className={`border backdrop-blur-sm overflow-hidden ${
+              skeletonType === "claim"
+                ? "border-emerald-500/40 bg-gradient-to-br from-emerald-500/5 via-card/80 to-card/80"
+                : "border-border/50 bg-card/50"
+            }`}
+          >
+            <CardContent className="p-0">
+              {/* Conditional header banner skeleton */}
+              {skeletonType === "claim" && (
+                <div className="bg-gradient-to-r from-emerald-500/20 via-emerald-400/15 to-teal-500/20 border-b border-emerald-500/30 px-3 py-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShimmerSkeleton className="w-3.5 h-3.5 rounded-full" />
+                      <PulseSkeleton className="h-3 w-48" delay={i * 100} />
+                    </div>
+                    <PulseSkeleton className="h-3 w-20" delay={i * 100 + 50} />
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <PulseSkeleton className="h-3 w-12" delay={i * 200 + 600} />
-                  <PulseSkeleton className="h-4 w-20" delay={i * 200 + 700} />
-                </div>
-                <div className="relative">
-                  <Skeleton className="h-2 w-full rounded-full bg-gray-800/50" />
-                  <div
-                    className="absolute inset-0 h-2 rounded-full bg-gradient-to-r from-green-400/30 to-purple-500/30 animate-pulse"
-                    style={{ width: `${40 + i * 20}%` }}
-                  ></div>
-                </div>
-              </div>
+              )}
 
-              <div className="flex flex-col space-y-2">
-                <PulseSkeleton className="h-4 w-16" delay={i * 200 + 800} />
-                <ShimmerSkeleton className="h-8 w-full rounded border border-white/10 mt-1" />
+              {skeletonType === "urgent" && (
+                <div className="bg-gradient-to-r from-orange-500/20 via-rose-500/15 to-rose-500/20 border-b border-orange-500/30 px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <ShimmerSkeleton className="w-3.5 h-3.5 rounded-full" />
+                    <PulseSkeleton className="h-3 w-32" delay={i * 100} />
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3">
+                {/* Title and badges section */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-0">
+                    {/* Title skeleton - 2 lines */}
+                    <div className="space-y-2 mb-2">
+                      <ShimmerSkeleton className="h-4 w-full" />
+                      <ShimmerSkeleton className="h-4 w-3/4" />
+                    </div>
+
+                    {/* Badges and amount */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <PulseSkeleton
+                        className="h-5 w-12 rounded-full bg-emerald-500/15 border border-emerald-500/40"
+                        delay={i * 100 + 100}
+                      />
+                      <PulseSkeleton className="h-4 w-16" delay={i * 100 + 150} />
+                      <PulseSkeleton className="h-2 w-2 rounded-full" delay={i * 100 + 175} />
+                      <div className="flex items-center gap-1">
+                        <ShimmerSkeleton className="w-3.5 h-3.5 rounded" />
+                        <PulseSkeleton className="h-4 w-12" delay={i * 100 + 200} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current odds section */}
+                <div className="flex items-center gap-2 mb-3">
+                  <PulseSkeleton className="h-3 w-24" delay={i * 100 + 250} />
+                  <div className="flex items-center gap-1.5">
+                    <PulseSkeleton
+                      className="h-5 w-16 rounded-full bg-emerald-500/10 border border-emerald-500/30"
+                      delay={i * 100 + 300}
+                    />
+                    <PulseSkeleton className="h-2 w-2 rounded-full" delay={i * 100 + 325} />
+                    <PulseSkeleton
+                      className="h-5 w-16 rounded-full bg-rose-500/10 border border-rose-500/30"
+                      delay={i * 100 + 350}
+                    />
+                  </div>
+                </div>
+
+                {/* Conditional middle section - claim breakdown or scenarios */}
+                {skeletonType === "claim" ? (
+                  // Claim breakdown skeleton
+                  <div className="mb-3">
+                    <PulseSkeleton className="h-7 w-full rounded bg-accent/30 mb-2" delay={i * 100 + 400} />
+                  </div>
+                ) : (
+                  // Win/loss scenarios skeleton
+                  <div className="mb-3 p-2.5 rounded-lg bg-muted/30 border border-border/30">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <ShimmerSkeleton className="w-3 h-3 rounded" />
+                          <PulseSkeleton className="h-3 w-28" delay={i * 100 + 400} />
+                        </div>
+                        <PulseSkeleton className="h-3 w-24" delay={i * 100 + 450} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <ShimmerSkeleton className="w-3 h-3 rounded" />
+                          <PulseSkeleton className="h-3 w-28" delay={i * 100 + 500} />
+                        </div>
+                        <PulseSkeleton className="h-3 w-24" delay={i * 100 + 550} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer with date and buttons */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <ShimmerSkeleton className="w-3 h-3 rounded" />
+                    <PulseSkeleton className="h-3 w-24" delay={i * 100 + 600} />
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {skeletonType === "claim" && (
+                      <ShimmerSkeleton className="h-7 w-[130px] rounded-md bg-gradient-to-r from-emerald-500/30 to-emerald-600/30" />
+                    )}
+                    <PulseSkeleton className="h-7 w-[130px] rounded-md border border-border/50" delay={i * 100 + 650} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        )
+      })}
     </div>
   )
 }

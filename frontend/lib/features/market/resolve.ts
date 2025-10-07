@@ -1,8 +1,8 @@
 "use client";
 
-import { resolveMarketIx, confirmResolveMarket } from "@/lib/services/market/marketService";
 import type { InstructionWithEphemeralSigners } from "@pythnetwork/pyth-solana-receiver";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
+import { resolveMarketIx } from "@/lib/services/market/marketService";
 import {
   Connection,
   PublicKey,
@@ -205,12 +205,6 @@ export async function resolveMarketWithPyth(opts: {
   const resolveSig = await signOneTx(connection, walletAdapter, resolveWrap, "resolve");
   await connection.confirmTransaction(resolveSig, "confirmed");
   sigs.push(resolveSig);
-
-  // try {
-  //   await confirmResolveMarket({ market_pda: marketPda, tx_sig: resolveSig });
-  // } catch (e) {
-  //   console.error("confirmResolveMarket() exception:", e);
-  // }
 
   return sigs;
 }

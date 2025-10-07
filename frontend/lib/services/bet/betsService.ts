@@ -5,10 +5,7 @@ import {
 	BetsResponse, 
 	PrepareBetPayload, 
 	PrepareBetSchema, 
-	PrepareBetResponseSchema, 
-	ConfirmBetPayload, 
-	ConfirmBetSchema, 
-	ConfirmBetResponseSchema
+	PrepareBetResponseSchema
 } from "@/lib/types/bet";
 
 export async function fetchBets(params: {
@@ -48,15 +45,4 @@ export async function prepareBet(p: PrepareBetPayload) {
   });
 
   return PrepareBetResponseSchema.parse(data);
-}
-
-export async function confirmBet(p: ConfirmBetPayload) {
-  const payload = ConfirmBetSchema.parse(p);
-
-  const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/bets/confirm`, payload, {
-    withCredentials: true,
-    headers: { "Content-Type": "application/json" },
-  });
-
-  return ConfirmBetResponseSchema.parse(data);
 }

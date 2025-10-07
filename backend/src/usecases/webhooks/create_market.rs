@@ -253,7 +253,7 @@ pub async fn handle(
     .map_err(AppError::Other)?;
 
     tracing::info!(
-        "📦 market inserted id={} pda={} creator={} sig={} slot={}",
+        "market inserted id={} pda={} creator={} sig={} slot={}",
         market_id,
         market_pda,
         authority,

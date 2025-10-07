@@ -214,7 +214,7 @@ pub mod prediction_market {
 
         m.fee_bps_snapshot = cfg.fee_bps;
         m.resolver_bps_snapshot = cfg.resolver_bps;
-        m.resolver_tip_cap_snapshot = cfg.resolver_tip_cap;
+        m.resolver_tip_cap_snapshot = 0;
         m.treasury_wallet_snapshot = cfg.treasury_wallet;
 
         Ok(())
@@ -282,45 +282,79 @@ pub mod prediction_market {
 
     pub fn resolve_market(ctx: Context<ResolveMarket>) -> Result<()> {
         let m = &mut ctx.accounts.market;
-        require!(!m.settled, ErrorCode::AlreadySettled);
-        require!(
-            Clock::get()?.unix_timestamp >= m.end_ts,
-            ErrorCode::TooEarly
-        );
 
+        // Time invariants
+        require!(!m.settled, ErrorCode::AlreadySettled);
         let now = Clock::get()?.unix_timestamp;
-        // if resolve is too late, VOID the market
+        require!(now >= m.end_ts, ErrorCode::TooEarly);
+
+        // Solvency check based on actual vault balances
+        ctx.accounts.escrow_vault_yes.reload()?;
+        ctx.accounts.escrow_vault_no.reload()?;
+        let yes_amt_u64 = ctx.accounts.escrow_vault_yes.amount;
+        let no_amt_u64  = ctx.accounts.escrow_vault_no.amount;
+
+        if yes_amt_u64 == 0 || no_amt_u64 == 0 {
+            // One-sided market: VOID without fees/transfers. Claim() refunds 1:1.
+            m.winning_side = 3; // VOID
+            m.payout_pool = 0;
+            m.settled = true;
+
+            emit!(MarketResolved {
+                market: m.key(),
+                winning_side: m.winning_side,
+                resolved_price_1e6: m.resolved_price_1e6,
+                pot: 0,
+                fee: 0,
+                tip: 0,
+                payout_pool: 0,
+            });
+            return Ok(());
+        }
+
+        // Resolve horizon: too late => VOID
         const RESOLVE_HORIZON_SECS: i64 = 15 * 86_400; // 15 days
         if now - m.end_ts > RESOLVE_HORIZON_SECS {
             m.winning_side = 3; // VOID
             m.payout_pool = 0;
             m.settled = true;
-            msg!("[RESOLVE] market voided due to resolve horizon exceeded ({}s > {}s)", now - m.end_ts, RESOLVE_HORIZON_SECS);
+            msg!(
+                "[RESOLVE] VOID: resolve horizon exceeded ({}s > {}s)",
+                now - m.end_ts,
+                RESOLVE_HORIZON_SECS
+            );
+            emit!(MarketResolved {
+                market: m.key(),
+                winning_side: m.winning_side,
+                resolved_price_1e6: m.resolved_price_1e6,
+                pot: 0,
+                fee: 0,
+                tip: 0,
+                payout_pool: 0,
+            });
             return Ok(());
         }
 
-        let max_age_i64 = (now - m.end_ts) + 600;
-        let max_age: u64 = max_age_i64
-            .try_into()
-            .unwrap_or(u64::MAX);
+        // Pyth: read price with a small grace window after end_ts
+        let max_age_i64 = (now - m.end_ts) + 600; // allow a small“catch up period
+        let max_age: u64 = max_age_i64.try_into().unwrap_or(u64::MAX);
 
-        // === Read price from Pyth Pull Oracle ===
         let price = ctx
             .accounts
             .price_update
             .get_price_no_older_than(&Clock::get()?, max_age, &m.feed_id)
             .map_err(|_| error!(ErrorCode::InvalidPriceFeed))?;
 
-        // Deadline policy: no later than end_ts
-        let max_post_lag: i64 = 86_400; // 24 hours
-        let pt = price.publish_time;    // i64
+        // end_ts: not earlier than end_ts and not older than 24h after it
+        let max_post_lag: i64 = 86_400; // 24h
+        let pt = price.publish_time; // i64
         require!(pt >= m.end_ts, ErrorCode::StalePrice);
         require!(pt - m.end_ts <= max_post_lag, ErrorCode::StalePrice);
 
-        // Conversion Pyth (price * 10^exponent) -> 1e6: USDC like scale
+        // Convert Pyth -> 1e6
         let price_1e6 = price_to_usd_1e6_from_pyth(price.price, price.exponent)?;
         m.resolved_price_1e6 = price_1e6;
-        
+
         msg!(
             "[RESOLVE] feed={:?} publish_time={} raw_price={} expo={} -> resolved_price_1e6={}",
             &m.feed_id,
@@ -330,156 +364,179 @@ pub mod prediction_market {
             price_1e6
         );
 
-        // Evaluate market condition (YES means condition holds)
+        // Outcome logic: YES if condition holds
         let yes_is_true = match m.market_type {
-            0 => cmp_check(m.comparator, price_1e6, m.bound_lo)?, // Threshold
-            1 => (price_1e6 >= m.bound_lo) && (price_1e6 <= m.bound_hi), // Range
+            0 => cmp_check(m.comparator, price_1e6, m.bound_lo)?,               // Threshold
+            1 => (price_1e6 >= m.bound_lo) && (price_1e6 <= m.bound_hi),        // Range
             _ => return Err(error!(ErrorCode::BadMarketType)),
         };
         let winner_is_yes = yes_is_true;
         m.winning_side = if winner_is_yes { 1 } else { 2 };
 
-        // VOID if no winners on the winning side; refunds handled in claim()
-        let total_winners = if winner_is_yes {
-            m.yes_total
-        } else {
-            m.no_total
-        };
+        // Defensive: the winning side must have winners by snapshot
+        let total_winners = if winner_is_yes { m.yes_total } else { m.no_total };
         if total_winners == 0 {
+            // Anomaly guard: treat as VOID
             m.winning_side = 3; // VOID
             m.payout_pool = 0;
             m.settled = true;
+            msg!("[RESOLVE] VOID: no winners on the winning side (total_winners=0)");
+            emit!(MarketResolved {
+                market: m.key(),
+                winning_side: m.winning_side,
+                resolved_price_1e6: m.resolved_price_1e6,
+                pot: 0,
+                fee: 0,
+                tip: 0,
+                payout_pool: 0,
+            });
             return Ok(());
         }
 
-        // Compute total pot and fees
-        let yes_amt = ctx.accounts.escrow_vault_yes.amount;
-        let no_amt = ctx.accounts.escrow_vault_no.amount;
-        let pot = (yes_amt as u128)
-            .checked_add(no_amt as u128)
-            .ok_or(ErrorCode::Overflow)? as u64;
+        // Pool & fees math
+        let yes_amt = yes_amt_u64 as u128;
+        let no_amt  = no_amt_u64  as u128;
 
-        let fee = mul_div_bps_u64(pot, m.fee_bps_snapshot as u64)?;
-        let mut tip = mul_div_bps_u64(pot, m.resolver_bps_snapshot as u64)?;
-        if tip > m.resolver_tip_cap_snapshot {
-            tip = m.resolver_tip_cap_snapshot;
-        }
-        let payout_pool = pot
-            .checked_sub(fee)
-            .ok_or(ErrorCode::Overflow)?
-            .checked_sub(tip)
-            .ok_or(ErrorCode::Overflow)?;
+        let pot_u128 = yes_amt
+            .checked_add(no_amt)
+            .ok_or(error!(ErrorCode::Overflow))?;
 
-        // Merge losing vault into winning vault to consolidate funds
+        let fee_u128 = mul_div_bps_u128(pot_u128, m.fee_bps_snapshot as u128)?;
+        let tip_u128 = mul_div_bps_u128(pot_u128, m.resolver_bps_snapshot as u128)?;
+
+
+        let payout_pool_u128 = pot_u128
+            .checked_sub(fee_u128).ok_or(error!(ErrorCode::Overflow))?
+            .checked_sub(tip_u128).ok_or(error!(ErrorCode::Overflow))?;
+
+        // Merge losing vault into the winning vault to consolidate funds
         let market_key = m.key();
-        let market_seed = market_key.as_ref();
+        let bump_yes = ctx.bumps.escrow_authority_yes;
+        let bump_no  = ctx.bumps.escrow_authority_no;
 
-        // NO -> YES
-        if winner_is_yes && no_amt > 0 {
-            let bump_no = ctx.bumps.escrow_authority_no;
-            let bump_no_arr = [bump_no];
-            let seeds_no: [&[u8]; 4] = [ESCROW_SEED, market_seed, SIDE_NO, &bump_no_arr];
-            let signer_no: &[&[u8]] = &seeds_no;
-            let signers: &[&[&[u8]]] = &[signer_no];
 
+        let bump_yes_arr = [bump_yes];
+        let bump_no_arr  = [bump_no]; 
+
+        // Helper builds PDA seeds: [ESCROW_SEED, market, SIDE_*, bump]
+        let seeds_yes: [&[u8]; 4] = escrow_signer_seeds(&market_key, SIDE_YES, &bump_yes_arr);
+        let seeds_no:  [&[u8]; 4] = escrow_signer_seeds(&market_key, SIDE_NO,  &bump_no_arr);
+
+        if winner_is_yes && no_amt_u64 > 0 {
+            let signers: &[&[&[u8]]] = &[&seeds_no];
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
                         from: ctx.accounts.escrow_vault_no.to_account_info(),
-                        to: ctx.accounts.escrow_vault_yes.to_account_info(),
+                        to:   ctx.accounts.escrow_vault_yes.to_account_info(),
                         authority: ctx.accounts.escrow_authority_no.to_account_info(),
                     },
                     signers,
                 ),
-                no_amt,
+                no_amt_u64,
             )?;
-        }
-        // YES -> NO
-        else if !winner_is_yes && yes_amt > 0 {
-            let bump_yes = ctx.bumps.escrow_authority_yes;
-            let bump_yes_arr = [bump_yes];
-            let seeds_yes: [&[u8]; 4] = [ESCROW_SEED, market_seed, SIDE_YES, &bump_yes_arr];
-            let signer_yes: &[&[u8]] = &seeds_yes;
-            let signers: &[&[&[u8]]] = &[signer_yes];
-
+        } else if !winner_is_yes && yes_amt_u64 > 0 {
+            let signers: &[&[&[u8]]] = &[&seeds_yes];
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
                         from: ctx.accounts.escrow_vault_yes.to_account_info(),
-                        to: ctx.accounts.escrow_vault_no.to_account_info(),
+                        to:   ctx.accounts.escrow_vault_no.to_account_info(),
                         authority: ctx.accounts.escrow_authority_yes.to_account_info(),
                     },
                     signers,
                 ),
-                yes_amt,
+                yes_amt_u64,
             )?;
         }
 
-        // Select winning vault/authority and distribute tip + fee
+        // Choose winning vault/authority and prepare tip/fee transfers
         let (win_vault, win_auth, win_side, win_bump) = if winner_is_yes {
             (
                 &ctx.accounts.escrow_vault_yes,
                 &ctx.accounts.escrow_authority_yes,
                 SIDE_YES,
-                ctx.bumps.escrow_authority_yes,
+                bump_yes,
             )
         } else {
             (
                 &ctx.accounts.escrow_vault_no,
                 &ctx.accounts.escrow_authority_no,
                 SIDE_NO,
-                ctx.bumps.escrow_authority_no,
+                bump_no,
             )
         };
 
-        let bump_arr = [win_bump];
-        let seeds: [&[u8]; 4] = escrow_signer_seeds(&market_key, win_side, &bump_arr);
-        let signer: &[&[u8]] = &seeds;
-        let signers: &[&[&[u8]]] = &[signer];
+        let tip_u64: u64 = tip_u128.try_into().map_err(|_| error!(ErrorCode::Overflow))?;
+        let fee_u64: u64 = fee_u128.try_into().map_err(|_| error!(ErrorCode::Overflow))?;
 
-        // Tip to resolver
-        if tip > 0 {
+        // Additional cheap invariants: protect against ATA spoofing
+        require_keys_eq!(ctx.accounts.resolver_ata.mint,  ctx.accounts.mint.key());
+        require_keys_eq!(ctx.accounts.treasury_ata.mint,  ctx.accounts.mint.key());
+
+
+        let win_bump_arr = [win_bump];
+        // Pay tip/fee from the winner vault (signed by the winner PDA)
+        let win_seeds: [&[u8]; 4] = escrow_signer_seeds(&market_key, win_side, &win_bump_arr);
+        let win_signers: &[&[&[u8]]] = &[&win_seeds];
+
+        if tip_u64 > 0 {
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
                         from: win_vault.to_account_info(),
-                        to: ctx.accounts.resolver_ata.to_account_info(),
+                        to:   ctx.accounts.resolver_ata.to_account_info(),
                         authority: win_auth.to_account_info(),
                     },
-                    signers,
+                    win_signers,
                 ),
-                tip,
+                tip_u64,
             )?;
         }
 
-        // Protocol fee to treasury
-        if fee > 0 {
+        if fee_u64 > 0 {
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
                         from: win_vault.to_account_info(),
-                        to: ctx.accounts.treasury_ata.to_account_info(),
+                        to:   ctx.accounts.treasury_ata.to_account_info(),
                         authority: win_auth.to_account_info(),
                     },
-                    signers,
+                    win_signers,
                 ),
-                fee,
+                fee_u64,
             )?;
         }
 
-        // Snapshot actual post-transfer vault amount and clamp payout_pool to avoid rounding drift
+        // Snapshot the final winner vault balance; clamp payout_pool to actual funds
         if winner_is_yes {
             ctx.accounts.escrow_vault_yes.reload()?;
-            m.payout_pool = core::cmp::min(payout_pool, ctx.accounts.escrow_vault_yes.amount);
+            let remain_u64 = ctx.accounts.escrow_vault_yes.amount;
+            let pp_u64: u64 = payout_pool_u128.try_into().unwrap_or(u64::MAX);
+            m.payout_pool = core::cmp::min(pp_u64, remain_u64);
         } else {
             ctx.accounts.escrow_vault_no.reload()?;
-            m.payout_pool = core::cmp::min(payout_pool, ctx.accounts.escrow_vault_no.amount);
+            let remain_u64 = ctx.accounts.escrow_vault_no.amount;
+            let pp_u64: u64 = payout_pool_u128.try_into().unwrap_or(u64::MAX);
+            m.payout_pool = core::cmp::min(pp_u64, remain_u64);
         }
+
         m.settled = true;
+
+        emit!(MarketResolved {
+            market: m.key(),
+            winning_side: m.winning_side,
+            resolved_price_1e6: m.resolved_price_1e6,
+            pot: pot_u128,
+            fee: fee_u128,
+            tip: tip_u128,
+            payout_pool: m.payout_pool as u128,
+        });
+
         Ok(())
     }
 
@@ -687,14 +744,19 @@ fn cmp_check(comparator: u8, lhs: i64, rhs: i64) -> Result<bool> {
         _ => return Err(error!(ErrorCode::BadComparator)),
     })
 }
-fn mul_div_bps_u64(x: u64, bps: u64) -> Result<u64> {
-    mul_div_u64(x, bps, BPS_DENOM)
-}
+
 fn mul_div_u64(a: u64, b: u64, d: u64) -> Result<u64> {
     let num = (a as u128)
         .checked_mul(b as u128)
         .ok_or(ErrorCode::Overflow)?;
     Ok((num / d as u128) as u64)
+}
+
+#[inline]
+fn mul_div_bps_u128(x: u128, bps: u128) -> Result<u128> {
+    // (x * bps) / 10_000 with overflow checks
+    let num = x.checked_mul(bps).ok_or(error!(ErrorCode::Overflow))?;
+    Ok(num / 10_000)
 }
 
 #[inline]
@@ -993,6 +1055,17 @@ pub struct SetMetadata<'info> {
     pub token_metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
+}
+
+#[event]
+pub struct MarketResolved {
+    pub market: Pubkey,
+    pub winning_side: u8, // 1 YES, 2 NO, 3 VOID
+    pub resolved_price_1e6: i64,
+    pub pot: u128,
+    pub fee: u128,
+    pub tip: u128,
+    pub payout_pool: u128,
 }
 
 #[event]

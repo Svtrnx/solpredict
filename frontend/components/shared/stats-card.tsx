@@ -18,39 +18,27 @@ interface StatsCardProps {
 
 export function StatsCard({ stats }: StatsCardProps) {
   const points = stats?.points ?? 0
-  const winRate = clampPercent(stats?.winRate)
+  const winRate = clampPercent(stats?.winRate, 1)
   const rank = stats?.rank ?? 0
   const rankChange = stats?.rankChange ?? 0
-  const totalVolume = stats?.totalVolume ?? 0
+  const totalVolume = clampPercent(Number(stats?.totalVolume ?? 0), 1);
   const activeBets = stats?.activeBets ?? 0
   const totalBets = stats?.totalBets ?? 0
-  const winRateChange = normalizeChange(stats?.winRateChange ?? 0)
+  const winRateChange = normalizeChange(stats?.winRateChange, 1)
 
-  function clampPercent(v: number | null | undefined) {
-    const n = typeof v === "number" && !Number.isNaN(v) ? v : 0
-    return Math.min(100, Math.max(0, n))
+  function clampPercent(v: number | null | undefined, decimals = 0) {
+    const n = typeof v === "number" && !Number.isNaN(v) ? v : 0;
+    const clamped = Math.min(100, Math.max(0, n));
+    const m = 10 ** decimals;
+    return Math.round(clamped * m) / m;
   }
 
-  const formatVolume = (volume: string | number) => {
-    if (typeof volume === "string") return volume
-    const numericVolume = typeof volume === "number" && !Number.isNaN(volume) ? volume : 0
-
-    const solAmount = (numericVolume / 100).toFixed(1)
-    const usdAmount = (numericVolume * 0.4).toLocaleString()
-    return (
-      <span>
-        {solAmount} SOL <span className="text-muted-foreground/70">(${usdAmount})</span>
-      </span>
-    )
-  }
-
-  function normalizeChange(val: number | string) {
-    if (typeof val === "string") {
-      if (/^[+\-]/.test(val)) return val
-      return `+${val}`
-    }
-    const n = Number(val) || 0
-    return (n >= 0 ? `+${n}` : `${n}`)
+  function normalizeChange(val: number | string | null | undefined, decimals = 1) {
+    let n = Number(val);
+    if (!Number.isFinite(n)) n = 0;
+    const m = 10 ** decimals;
+    const rounded = Math.round(n * m) / m;
+    return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(decimals)}`;
   }
 
   const rankImproved = rankChange < 0

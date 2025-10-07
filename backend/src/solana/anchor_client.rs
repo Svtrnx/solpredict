@@ -121,6 +121,19 @@ pub fn encode_unsigned_tx(tx: &Transaction) -> anyhow::Result<String> {
 // Thin helpers: PDAs & account fetch
 // ─────────────────────────────────────────────────────────────
 
+pub fn get_position_account(
+    ctx: &AnchorCtx,
+    market_pda: Pubkey,
+    user: Pubkey,
+) -> anyhow::Result<onchain::Position> {
+    let program = program(ctx)?;
+    let (pos_pda, _) = pda_position(&market_pda, &user);
+    let acc: onchain::Position = program
+        .account(pos_pda)
+        .map_err(|e| anyhow::anyhow!("position account fetch failed: {e}"))?;
+    Ok(acc)
+}
+
 pub fn get_market_account(ctx: &AnchorCtx, market_pda: Pubkey) -> anyhow::Result<onchain::Market> {
     let program = program(ctx)?;
     let acc: onchain::Market = program
@@ -451,7 +464,6 @@ pub fn build_create_and_seed(
 
         ixs.append(&mut place_ixs);
     }
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
 
     if let Some(memo_bytes) = memo_opt {
         ixs.push(build_memo(memo_bytes, &[]));
@@ -643,7 +655,7 @@ pub fn build_resolve_ix_bundle(
 }
 
 // ==== Market: claim winnings ====
-pub fn build_claim(
+pub fn build_claim_ix(
     ctx: &AnchorCtx,
     user_pubkey: Pubkey,
     market_pda: Pubkey,

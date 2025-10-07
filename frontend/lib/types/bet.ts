@@ -11,22 +11,19 @@ export const BetDataSchema = z.object({
 
   amount: z.coerce.number(),
   currentPrice: z.coerce.number().nullable().optional(),
+  priceYes: z.coerce.number().nullable().optional(),
   entryPrice: z.coerce.number().nullable().optional(),
-
-  pnl: z.coerce.number(),
-  pnlAmount: z.coerce.number().nullable().optional(),
 
   endDate: z.string().nullable().optional(),
 
-  status: z.enum(["winning", "losing"]).nullable().optional(),
-  trend: z.enum(["up", "down"]).nullable().optional(),
-  result: z.enum(["won", "lost"]).nullable().optional(),
-
+  result: z.enum(["won", "lost", "void"]).nullable().optional(),
   payout: z.coerce.number().nullable().optional(),
   resolvedDate: z.string().nullable().optional(),
-})
 
-// --- prepare ---
+  marketOutcome: z.enum(["yes", "no", "void"]).nullable().optional(),
+  needsClaim: z.boolean().nullable().optional(),
+});
+
 export const PrepareBetSchema = z.object({
   market_pda: z.string().min(32).max(64),
   side: z.enum(["yes", "no"]),
@@ -39,21 +36,6 @@ export const PrepareBetResponseSchema = z.object({
   ok: z.boolean(),
   tx_base64: z.string(),
 });
-
-// --- confirm ---
-export const ConfirmBetSchema = PrepareBetSchema.extend({
-  signature: z.string().min(80).max(120),
-});
-
-export type ConfirmBetPayload = z.infer<typeof ConfirmBetSchema>;
-
-export const ConfirmBetResponseSchema = z.object({
-  ok: z.boolean(),
-  market_id: z.string().uuid(),
-  bet_id: z.number(),
-  signature: z.string(),
-});
-
 
 export type BetData = z.infer<typeof BetDataSchema>
 

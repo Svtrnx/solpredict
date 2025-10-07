@@ -1,8 +1,11 @@
-
-
 import axios from "axios";
 
-import { RawCreateRespSchema, ResolveIxBundleSchema, ResolveIxBundle, ResolveIxRequest, ResolveIxRequestSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, CreateMarketFormData, MarketSchema, MarketResponse, ConfirmResolveRequest, ConfirmResolveResponse, ConfirmResolveRequestSchema, ConfirmResolveResponseSchema} from "@/lib/types";
+import { 
+	CreateMarketFormData, MarketSchema, MarketResponse, PrepareClaimPayload, PrepareClaimResponseSchema, 
+	ResolveIxRequestSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, 
+	RawCreateRespSchema, ResolveIxBundleSchema, ResolveIxBundle, ResolveIxRequest, 
+	PrepareClaimSchema, PrepareClaimResponse
+} from "@/lib/types";
 
 export type MarketsListParams = {
   limit?: number
@@ -32,24 +35,7 @@ export async function createMarket(formData: CreateMarketFormData): Promise<Crea
 	} catch (err) {
 		console.error("createMarket failed:", err)
 		throw err
-}
-}
-
-export async function confirmMarket(
-	create: CreateMarketFormData,
-	marketId: string,
-	signature: string
-	) {
-	await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/confirm`, { 
-		create, 
-		txSig: signature, 
-		marketId 
-	},
-	{ 	
-		withCredentials: true, 
-		headers: { "Content-Type": "application/json" } 
 	}
-	);
 }
 
 export async function getMarketsList(opts: MarketsListParams = {}): Promise<MarketResponse> {
@@ -117,20 +103,20 @@ export async function resolveMarketIx(req: ResolveIxRequest): Promise<ResolveIxB
 	}
 }
 
-export async function confirmResolveMarket(req: ConfirmResolveRequest): Promise<ConfirmResolveResponse> {
+export async function prepareClaimTx(p: PrepareClaimPayload): Promise<PrepareClaimResponse> {
+	const payload = PrepareClaimSchema.parse(p);
 	try {
-		const payload = ConfirmResolveRequestSchema.parse(req);
 		const { data } = await axios.post(
-			`${process.env.NEXT_PUBLIC_API_URL}/markets/resolve/confirm`,
-				payload,
-			{ 
-				withCredentials: true, 
-				headers: { "Content-Type": "application/json" } 
-			}
+		`${process.env.NEXT_PUBLIC_API_URL}/markets/claim/tx`,
+			payload,
+		{
+			withCredentials: true,
+			headers: { "Content-Type": "application/json" },
+		}
 		);
-		return ConfirmResolveResponseSchema.parse(data);
+		return PrepareClaimResponseSchema.parse(data);
 	} catch (error: any) {
-		console.error("Failed to post /markets/resolve/confirm", error);
+		console.error("Failed to get /markets/claim/tx", error);
 		throw error
 	}
 }

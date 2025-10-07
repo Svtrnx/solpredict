@@ -65,7 +65,6 @@ pub async fn me(State(state): State<SharedState>, jar: CookieJar) -> impl IntoRe
         Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
     };
 
-    // Response with user info
     let claims = data.claims;
     Json(MeResponse {
         ok: true,

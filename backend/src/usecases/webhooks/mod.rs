@@ -1,7 +1,8 @@
+pub mod resolve_market;
 pub mod create_market;
 pub mod place_bet;
-pub mod resolve_market;
 pub mod shared;
+pub mod claim;
 
 use serde_json::Value;
 
@@ -9,7 +10,7 @@ use shared::{anchor_sighash, extract_instructions, ix_program_id};
 use crate::{error::AppError, state};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Method { PlaceBet, CreateMarket, ResolveMarket, Unknown }
+enum Method { PlaceBet, CreateMarket, ResolveMarket, Claim, Unknown }
 
 fn detect_method(ix: &Value) -> Method {
     let bytes = match shared::ix_data_bytes(ix) { Some(b) => b, None => return Method::Unknown };
@@ -20,6 +21,8 @@ fn detect_method(ix: &Value) -> Method {
         Method::CreateMarket
     } else if discr == anchor_sighash("resolve_market") {
         Method::ResolveMarket
+    } else if discr == anchor_sighash("claim") {
+        Method::Claim
     } else {
          Method::Unknown
         }
@@ -50,6 +53,11 @@ pub async fn handle_helius_raw_item(item: &Value) -> Result<(), AppError> {
             Method::ResolveMarket => {
                 if let Err(e) = resolve_market::handle(item, ix, msg_keys_opt).await {
                     tracing::error!("resolve_market error: {e:#?}");
+                }
+            }
+            Method::Claim => {
+                if let Err(e) = claim::handle(item, ix, msg_keys_opt).await {
+                    tracing::error!("claim error: {e:#?}");
                 }
             }
             Method::Unknown => {}

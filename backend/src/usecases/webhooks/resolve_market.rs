@@ -63,7 +63,7 @@ pub async fn handle(
         .map_err(AppError::Other)?;
 
     tracing::info!(
-        "✅ resolve_market persisted: market_id={} pda={} resolver={} sig={} slot={} status={} winning_side={:?} price={} pool={}",
+        "resolve_market persisted: market_id={} pda={} resolver={} sig={} slot={} status={} winning_side={:?} price={} pool={}",
         view.market_id,
         market_pda,
         resolver,

@@ -10,7 +10,7 @@ use axum::{
     body::Body,
 };
 
-use crate::state::SharedState;
+use crate::{state::SharedState, repo::users::exists_user_wallet};
 
 #[derive(Debug, Deserialize)]
 struct Claims {
@@ -56,7 +56,6 @@ pub async fn require_user(
         return (StatusCode::UNAUTHORIZED, "missing sp_session").into_response();
     };
 
-    // Decode + validate JWT
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
@@ -70,8 +69,7 @@ pub async fn require_user(
     };
     let claims = data.claims;
 
-    // Ensure user+wallet exists and is active in DB
-    match crate::repo::users::exists_user_wallet(
+    match exists_user_wallet(
         state.db.pool(),
         &claims.sub,
         &claims.wallet_id,
