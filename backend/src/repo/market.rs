@@ -121,10 +121,10 @@ pub async fn insert_confirmed_market(
     mint: &str,
     bound_lo_1e6: i64,
     bound_hi_1e6: i64,
-) -> anyhow::Result<uuid::Uuid> {
+) -> anyhow::Result<Uuid> {
     let initial_liquidity_1e6 = (req.initial_liquidity * 1_000_000.0).round() as i64;
 
-    let rec = sqlx::query_as::<_, MarketRowInsert>(
+    let id = sqlx::query_scalar!(
         r#"
         INSERT INTO markets (
           market_pda, authority_pubkey, tx_sig_create,
@@ -135,62 +135,66 @@ pub async fn insert_confirmed_market(
         )
         VALUES ($1,$2,$3,
                 $4,$5,
-                $6,$7,$8,$9,$10,
+                $6,$7,$8,$9,$10::timestamptz,
                 $11,$12,$13,
                 $14)
         RETURNING id
-    "#,
+        "#,
+        market_pda,
+        authority_pubkey,
+        tx_sig_create,
+        category_str(req.category),
+        req.symbol,
+        market_type_str(req.market_type),
+        comparator_str(req.comparator),
+        bound_lo_1e6,
+        bound_hi_1e6,
+        req.end_date, 
+        req.feed_id,
+        price_feed_account,
+        mint,
+        initial_liquidity_1e6
     )
-    .bind(market_pda)
-    .bind(authority_pubkey)
-    .bind(tx_sig_create)
-    .bind(category_str(req.category))
-    .bind(&req.symbol)
-    .bind(market_type_str(req.market_type))
-    .bind(comparator_str(req.comparator))
-    .bind(bound_lo_1e6)
-    .bind(bound_hi_1e6)
-    .bind(req.end_date)
-    .bind(&req.feed_id)
-    .bind(price_feed_account)
-    .bind(mint)
-    .bind(initial_liquidity_1e6)
     .fetch_one(pool)
     .await?;
 
-    Ok(rec.id)
+    Ok(id)
 }
 
 pub async fn upsert_initial_state(
     pool: &sqlx::PgPool,
-    market_id: uuid::Uuid,
+    market_id: Uuid,
     yes_total_1e6: i64,
     no_total_1e6: i64,
     participants: i32,
 ) -> anyhow::Result<()> {
-    tracing::info!("Upserting initial market_state");
-    tracing::info!("yes_total_1e6={} no_total_1e6={} participants={}", yes_total_1e6, no_total_1e6, participants);
+    tracing::info!(
+        "Upserting initial market_state: yes_total_1e6={} no_total_1e6={} participants={}",
+        yes_total_1e6, no_total_1e6, participants
+    );
+
     let total = yes_total_1e6 + no_total_1e6;
 
-    sqlx::query(
+    sqlx::query!(
         r#"
         INSERT INTO market_state (
           market_id, yes_total_1e6, no_total_1e6, total_volume_1e6, participants
         )
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (market_id) DO UPDATE SET
+        ON CONFLICT (market_id) DO UPDATE
+        SET
           yes_total_1e6     = EXCLUDED.yes_total_1e6,
           no_total_1e6      = EXCLUDED.no_total_1e6,
           total_volume_1e6  = EXCLUDED.total_volume_1e6,
           participants      = EXCLUDED.participants,
           updated_at        = now()
-    "#,
+        "#,
+        market_id,
+        yes_total_1e6,
+        no_total_1e6,
+        total,
+        participants
     )
-    .bind(market_id)
-    .bind(yes_total_1e6)
-    .bind(no_total_1e6)
-    .bind(total)
-    .bind(participants)
     .execute(pool)
     .await?;
 
@@ -281,6 +285,10 @@ pub async fn fetch_markets_page(
         qb.push(" AND category = ").push_bind(cat);
     }
 
+    qb.push(" AND status = ANY(")
+    .push_bind::<Vec<&str>>(vec!["active", "awaiting_resolve"])
+    .push(") ");
+
     if let (Some(v), Some(cid)) = (&cur_val, cur_id) {
         qb.push(" AND (")
             .push(plan.col)
@@ -350,38 +358,40 @@ pub async fn fetch_markets_page(
     })
 }
 
-pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> Result<Option<MarketRow>> {
-    let row = sqlx::query_as::<_, MarketRow>(
+pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<Option<MarketRow>> {
+    let row = sqlx::query_as!(
+        MarketRow,
         r#"
-            SELECT
-                id,
-                market_pda,
-                creator,                 
-                category,
-                symbol,
-                end_date_utc,
+        SELECT
+            id                          AS "id!: uuid::Uuid",
+            market_pda                  AS "market_pda!",
+            creator                     AS "creator!",
+            category                    AS "category!",
+            symbol                      AS "symbol!",
+            end_date_utc                AS "end_date_utc!: chrono::DateTime<chrono::Utc>",
 
-                market_type,
-                comparator,
-                bound_lo_1e6,
-                bound_hi_1e6,
+            market_type                 AS "market_type!",
+            comparator                  AS "comparator?",
+            bound_lo_1e6                AS "bound_lo_1e6?: i64",
+            bound_hi_1e6                AS "bound_hi_1e6?: i64",
 
-                initial_liquidity_1e6,
-                yes_total_1e6,
-                no_total_1e6,
-                total_volume_1e6,
-                participants,
+            initial_liquidity_1e6       AS "initial_liquidity_1e6!: i64",
+            yes_total_1e6               AS "yes_total_1e6!: i64",
+            no_total_1e6                AS "no_total_1e6!: i64",
+            total_volume_1e6            AS "total_volume_1e6!: i64",
+            participants                AS "participants!: i32",
 
-                price_yes_bp,
-                status,
-                resolver_pubkey
-            FROM market_view
-            WHERE market_pda = $1
+            price_yes_bp                AS "price_yes_bp?: i32",
+            status                      AS "status!",
+            resolver_pubkey             AS "resolver_pubkey?"
+        FROM market_view
+        WHERE market_pda = $1
         "#,
+        market_pda
     )
-    .bind(market_pda)
     .fetch_optional(pool)
     .await?;
+
     Ok(row)
 }
 
@@ -389,17 +399,24 @@ pub async fn fetch_by_pda(
     pool: &PgPool,
     market_pda: &str,
 ) -> anyhow::Result<Option<MarketViewRow>> {
-    let row = sqlx::query_as::<_, MarketViewRow>(
+    let row = sqlx::query_as!(
+        MarketViewRow,
         r#"
-        SELECT id, market_pda, status, price_feed_account, end_date_utc
+        SELECT
+            id                                  AS "id!: uuid::Uuid",
+            market_pda                          AS "market_pda!",
+            status                              AS "status!",
+            COALESCE(price_feed_account, '')    AS "price_feed_account!",
+            end_date_utc                        AS "end_date_utc?: chrono::DateTime<chrono::Utc>"
         FROM market_view
         WHERE market_pda = $1
         LIMIT 1
         "#,
+        market_pda
     )
-    .bind(market_pda)
     .fetch_optional(pool)
     .await?;
+
     Ok(row)
 }
 

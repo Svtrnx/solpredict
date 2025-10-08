@@ -23,6 +23,8 @@ pub struct WalletOverviewResponse {
     join_date: String,
 }
 
+// ====== GET /v1/profile/overview ======
+
 pub async fn wallet_overview(
     State(state): State<SharedState>,
     Extension(current_user): Extension<CurrentUser>,
@@ -55,6 +57,8 @@ pub async fn wallet_overview(
         join_date: ov.join_date,
     }))
 }
+
+// ====== GET /v1//profile/{wallet} ======
 
 pub async fn wallet_overview_public(
     State(state): State<SharedState>,

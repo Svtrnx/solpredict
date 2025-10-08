@@ -46,6 +46,8 @@ pub struct MeOverviewResponse {
     joinDate: String,
 }
 
+// ====== GET /v1/auth/me ======
+
 // Endpoint: return current authenticated user from session cookie
 pub async fn me(State(state): State<SharedState>, jar: CookieJar) -> impl IntoResponse {
     // Read sp_session cookie

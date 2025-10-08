@@ -15,6 +15,8 @@ pub struct NonceResp {
     ttl_sec: u64,
 }
 
+// ====== GET /v1/auth/nonce ======
+
 // Generate short-lived nonce
 pub async fn get_nonce(State(state): State<SharedState>) -> Json<NonceResp> {
     // Create random alphanumeric string

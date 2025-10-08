@@ -2,6 +2,8 @@
 use axum::http::StatusCode;
 use crate::ai::client::fetch_probability;
 
+// ====== GET /v1/ai/probability ======
+
 pub async fn get_probability() -> Result<String, (StatusCode, String)> {
     tracing::info!("get_probability");
 

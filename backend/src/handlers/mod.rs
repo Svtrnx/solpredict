@@ -1,7 +1,7 @@
+pub mod leaderboard;
 pub mod webhooks;
 pub mod metadata;
 pub mod profile;
-pub mod airdrop;
 pub mod health;
 pub mod market;
 pub mod root;

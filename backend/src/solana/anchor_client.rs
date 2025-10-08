@@ -25,7 +25,6 @@ use anchor_spl::{
 use bincode::{config::standard, serde::encode_to_vec};
 use anchor_client::{Client, Cluster, Program};
 use base64::{Engine, engine::general_purpose};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{str::FromStr, time::Duration};
 use anyhow::{Context, Result};
 use spl_memo::build_memo;

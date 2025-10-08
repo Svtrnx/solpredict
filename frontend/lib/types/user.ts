@@ -45,3 +45,25 @@ export interface LevelInfo {
   nextThreshold: number | null
   minPoints: string
 }
+
+export const LeaderboardPeriodSchema = z.enum(["all-time", "monthly", "weekly"]);
+export const LeaderboardChangeSchema = z.enum(["up", "down", "same", "new"]);
+
+export const LeaderboardItemSchema = z.object({
+  rank: z.number(),
+  prevRank: z.number(),
+  address: z.string(),
+  winRate: z.number(),
+  totalBets: z.number().int(),
+  volume: z.number(),
+  streak: z.number().int(),
+  level: z.string(),
+  points: z.number().int(),
+  change: LeaderboardChangeSchema,   // "up" | "down" | "same" | "new"
+});
+
+export const LeaderboardResponseSchema = z.object({
+  period: LeaderboardPeriodSchema,
+  items: z.array(LeaderboardItemSchema),
+});
+export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriodSchema>;

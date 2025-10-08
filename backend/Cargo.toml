@@ -59,6 +59,9 @@ sqlx = { version = "0.8.6", features = [
 	"chrono",
 	"time",
 	"rust_decimal",
+	"migrate",
+	"runtime-tokio",
+	# "offline"
 ] }
 rust_decimal = "1.37.2"
 hex = "0.4.3"

@@ -40,7 +40,8 @@ pub struct CreateMarketResponse {
     pub message: String,
 }
 
-// Main entrypoint: build and return transaction for creating market
+// ====== POST /v1/markets ======
+
 pub async fn create_market(
     State(state): State<SharedState>,
     headers: HeaderMap,

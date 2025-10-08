@@ -9,7 +9,7 @@ use axum::{
 };
 
 use crate::{
-    repo::bets as bets_repo,
+    repo::{position as pos_repo},
     state::SharedState,
     handlers::market::types::{generate_title, TitleSpec}
 };
@@ -25,16 +25,25 @@ fn to_prob(bp: Option<i32>) -> f64 {
 }
 
 #[inline]
-fn entry_on_side(side: &str, price_yes_bp_at_bet: Option<i32>) -> f64 {
-    let p_yes = to_prob(price_yes_bp_at_bet);
-    if side == "yes" { p_yes } else { 1.0 - p_yes }
+fn detect_side(yes_1e6: i64, no_1e6: i64) -> &'static str {
+    if yes_1e6 > 0 && no_1e6 == 0 { "yes" }
+    else if no_1e6 > 0 && yes_1e6 == 0 { "no" }
+    else { "mixed" }
 }
 
-#[inline]
-fn current_on_side(side: &str, price_yes_bp_now: Option<i32>) -> f64 {
-    let p_yes = to_prob(price_yes_bp_now);
-    if side == "yes" { p_yes } else { 1.0 - p_yes }
+impl From<&pos_repo::PositionRow> for TitleSpec {
+    fn from(p: &pos_repo::PositionRow) -> Self {
+        TitleSpec {
+            symbol: p.symbol.clone(),
+            end_date_utc: p.end_date_utc,
+            market_type: Some(p.market_type.clone()),
+            comparator: p.comparator.clone(),
+            bound_lo_1e6: p.bound_lo_1e6,
+            bound_hi_1e6: p.bound_hi_1e6,
+        }
+    }
 }
+
 
 #[derive(Debug, Deserialize)]
 struct Claims {
@@ -59,28 +68,6 @@ pub struct BetsQuery {
 pub enum KindParam {
     Active,
     History,
-}
-
-impl From<&bets_repo::BetRow> for TitleSpec {
-    fn from(b: &bets_repo::BetRow) -> Self {
-        TitleSpec {
-            symbol: b.symbol.clone(),
-            end_date_utc: b.end_date_utc,
-            market_type: Some(b.market_type.clone()),
-            comparator: b.comparator.clone(),
-            bound_lo_1e6: b.bound_lo_1e6,
-            bound_hi_1e6: b.bound_hi_1e6,
-        }
-    }
-}
-
-impl From<KindParam> for bets_repo::BetKind {
-    fn from(k: KindParam) -> Self {
-        match k {
-            KindParam::Active => bets_repo::BetKind::Active,
-            KindParam::History => bets_repo::BetKind::History,
-        }
-    }
 }
 
 /// API DTOs
@@ -118,29 +105,6 @@ pub struct BetsPageResponse {
 const DATETIME_API: &str = "%Y-%m-%d %H:%M:%S%:z";
 // const DATETIME_QUESTION: &str = "%b %d, %Y UTC";
 
-fn calc_net_claim_1e6(
-    winning_side: Option<i16>,
-    payout_pool_1e6: Option<i64>,
-    total_winning_side_1e6: Option<i64>,
-    user_winning_amount_1e6: i64,
-    user_yes_bet_1e6: i64,
-    user_no_bet_1e6: i64,
-) -> Option<i64> {
-    match winning_side {
-        Some(3) => {
-            Some(user_yes_bet_1e6.saturating_add(user_no_bet_1e6))
-        }
-        Some(1) | Some(2) => {
-            let pool = payout_pool_1e6?;
-            let total = total_winning_side_1e6?;
-            if total <= 0 { return Some(0); }
-            // floor(pool * user / total)
-            Some(((pool as i128) * (user_winning_amount_1e6 as i128) / (total as i128)) as i64)
-        }
-        _ => None, // not settled
-    }
-}
-
 fn resolve_wallet(
     jar: &CookieJar,
     q_wallet: &Option<String>,
@@ -163,6 +127,8 @@ fn resolve_wallet(
     Err((StatusCode::BAD_REQUEST, "wallet is required".into()))
 }
 
+// ====== GET /v1/profile/bets ======
+
 pub async fn list_bets_public(
     State(state): State<SharedState>,
     jar: CookieJar,
@@ -171,73 +137,77 @@ pub async fn list_bets_public(
 
     let wallet = resolve_wallet(&jar, &q.wallet, &state)?;
 
-    let kind: bets_repo::BetKind = q.kind_raw.into();
+    let kind = match q.kind_raw {
+        KindParam::Active => pos_repo::BetKind::Active,
+        KindParam::History => pos_repo::BetKind::History,
+    };
     let limit = q.limit.unwrap_or(15).clamp(1, 100) as i64;
 
     let page =
-        bets_repo::fetch_user_bets_page(state.db.pool(), &wallet, kind, limit, q.cursor.as_deref())
+        pos_repo::fetch_user_positions_page(state.db.pool(), &wallet, kind, limit, q.cursor.as_deref())
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;
 
     let items = page
         .items
         .into_iter()
-        .map(|b| {
-            let amount = (b.amount_1e6 as f64) / 1_000_000.0;
+        .map(|p| {
+            let total_1e6 = p.user_yes_bet_1e6.saturating_add(p.user_no_bet_1e6);
+            let amount = (total_1e6 as f64) / 1_000_000.0;
 
-            let p_yes_now = to_prob(b.price_yes_bp);
+            let side_str = detect_side(p.user_yes_bet_1e6, p.user_no_bet_1e6);
 
-            let entry = entry_on_side(&b.side, b.price_yes_bp_at_bet);
-            let current = current_on_side(&b.side, b.price_yes_bp);
+            let p_yes_now = to_prob(p.price_yes_bp);
+            let current = match side_str {
+                "yes" => Some(p_yes_now),
+                "no"  => Some(1.0 - p_yes_now),
+                _     => None, // mixed
+            };
 
-            let deadline_str = b.end_date_utc.format(DATETIME_API).to_string();
+            let deadline_str = p.end_date_utc.format(DATETIME_API).to_string();
 
-            let net_1e6 = calc_net_claim_1e6(
-                b.winning_side,
-                b.payout_pool_1e6,
-                b.total_winning_side_1e6,
-                b.user_winning_amount_1e6,
-                b.user_yes_bet_1e6,
-                b.user_no_bet_1e6,
-            );
-            let payout = net_1e6.map(|v| (v as f64) / 1_000_000.0);
+            let payout = p.net_claim_1e6.map(|v| (v as f64) / 1_000_000.0);
 
-            let (result, resolved_date, end_date) = if let Some(ws) = b.winning_side {
-                // settled
-                let res = match ws {
-                    1 if b.side == "yes" => "won",
-                    2 if b.side == "no"  => "won",
-                    3 => "void",
-                    _ => "lost",
-                }.to_string();
-                (Some(res), Some(deadline_str.clone()), None)
-            } else {
-                // not settled
-                (None, None, Some(deadline_str.clone()))
+            let (result, resolved_date, end_date) = match p.winning_side {
+                Some(1) => { // YES
+                    let won = p.user_yes_bet_1e6 > 0;
+                    (Some(if won { "won".into() } else { "lost".into() }),
+                    Some(deadline_str.clone()),
+                    None)
+                }
+                Some(2) => { // NO
+                    let won = p.user_no_bet_1e6 > 0;
+                    (Some(if won { "won".into() } else { "lost".into() }),
+                    Some(deadline_str.clone()),
+                    None)
+                }
+                Some(3) => (Some("void".into()), Some(deadline_str.clone()), None),
+                _ => (None, None, Some(deadline_str.clone())), // not settled
             };
 
             BetDto {
-                id: b.id.to_string(),
-                title: generate_title(&TitleSpec::from(&b)),
-                market_pda: b.market_pda.clone(),
-                side: b.side,
+                id: p.market_id.to_string(),
+                title: generate_title(&TitleSpec::from(&p)),
+                market_pda: p.market_pda.clone(),
+                side: side_str.to_string(),
                 amount,
 
-                current_price: Some(current),
+                current_price: current,
                 price_yes: Some(p_yes_now),
 
-                entry_price: Some(entry),
+                entry_price: None,
 
                 result,
                 payout,
                 resolved_date,
 
                 end_date,
-                market_outcome: b.market_outcome.clone(),
-                needs_claim: Some(b.needs_claim),
+                market_outcome: p.market_outcome.clone(),
+                needs_claim: Some(p.needs_claim),
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
+
 
     Ok(Json(BetsPageResponse {
         ok: true,

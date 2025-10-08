@@ -38,6 +38,8 @@ struct Claims {
     exp: usize,        // expires-at
 }
 
+// ====== POST /v1/auth/verify ======
+
 pub async fn verify(
     State(state): State<SharedState>,
     Json(output): Json<SiwsOutput>,

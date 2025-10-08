@@ -7,7 +7,7 @@ export const BetDataSchema = z.object({
   title: z.string(),
   marketPda: z.string(),
 
-  side: z.enum(["yes", "no"]),
+  side: z.enum(["yes", "no", "mixed"]),
 
   amount: z.coerce.number(),
   currentPrice: z.coerce.number().nullable().optional(),

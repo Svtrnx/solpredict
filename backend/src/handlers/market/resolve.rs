@@ -17,6 +17,8 @@ pub struct ResolveIxRequest {
     pub market_pda: String,
 }
 
+// ====== POST /v1/markets/resolve/ix ======
+
 pub async fn build_resolve_ix(
     State(state): State<SharedState>,
     headers: HeaderMap,

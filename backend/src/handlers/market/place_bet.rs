@@ -69,6 +69,8 @@ pub struct PreparePlaceBetResponse {
     pub tx_base64: String, // unsigned Transaction
 }
 
+// ====== POST /v1/markets/bets/tx ======
+
 pub async fn prepare_place_tx(
     State(state): State<SharedState>,
     Extension(user): Extension<CurrentUser>,

@@ -28,7 +28,7 @@ pub fn build(state: SharedState) -> Router {
     // --- rate limit ---
     let governor = GovernorConfigBuilder::default()
         .per_second(1)
-        .burst_size(15)
+        .burst_size(25)
         .finish()
         .unwrap();
 
@@ -43,9 +43,10 @@ pub fn build(state: SharedState) -> Router {
     let public_v1 = Router::new()
         .route("/profile/{wallet}", get(handlers::profile::profile::wallet_overview_public))
         .route("/profile/bets", get(handlers::profile::bets::list_bets_public))
-        .route("/webhooks", post(handlers::webhooks::helius::helius))
+        .route("/webhooks/helius", post(handlers::webhooks::helius::helius))
         .route("/auth/nonce", get(handlers::siws::nonce::get_nonce))
         .route("/auth/verify", post(handlers::siws::verify::verify))
+        .route("/leaderboard", get(handlers::leaderboard::handle))
         .route("/auth/me", get(handlers::me::me))
         .merge(handlers::market::public_routes());
     

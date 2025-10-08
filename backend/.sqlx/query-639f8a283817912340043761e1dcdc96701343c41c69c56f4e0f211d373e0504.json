@@ -1,0 +1,124 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id                          AS \"id!: uuid::Uuid\",\n            market_pda                  AS \"market_pda!\",\n            creator                     AS \"creator!\",\n            category                    AS \"category!\",\n            symbol                      AS \"symbol!\",\n            end_date_utc                AS \"end_date_utc!: chrono::DateTime<chrono::Utc>\",\n\n            market_type                 AS \"market_type!\",\n            comparator                  AS \"comparator?\",\n            bound_lo_1e6                AS \"bound_lo_1e6?: i64\",\n            bound_hi_1e6                AS \"bound_hi_1e6?: i64\",\n\n            initial_liquidity_1e6       AS \"initial_liquidity_1e6!: i64\",\n            yes_total_1e6               AS \"yes_total_1e6!: i64\",\n            no_total_1e6                AS \"no_total_1e6!: i64\",\n            total_volume_1e6            AS \"total_volume_1e6!: i64\",\n            participants                AS \"participants!: i32\",\n\n            price_yes_bp                AS \"price_yes_bp?: i32\",\n            status                      AS \"status!\",\n            resolver_pubkey             AS \"resolver_pubkey?\"\n        FROM market_view\n        WHERE market_pda = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: uuid::Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "market_pda!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "creator!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "category!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "symbol!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "end_date_utc!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "market_type!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "comparator?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "bound_lo_1e6?: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "bound_hi_1e6?: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "initial_liquidity_1e6!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "yes_total_1e6!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "no_total_1e6!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 13,
+        "name": "total_volume_1e6!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 14,
+        "name": "participants!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
+        "name": "price_yes_bp?: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "resolver_pubkey?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "639f8a283817912340043761e1dcdc96701343c41c69c56f4e0f211d373e0504"
+}

@@ -14,6 +14,8 @@ pub struct MetadataReq {
     pub uri: String,
 }
 
+// ====== POST /v1/admin/metadata ======
+
 // Endpoint: set token metadata (admin-only)
 pub async fn set_token_metadata(
     State(_app): State<SharedState>,

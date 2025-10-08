@@ -1,3 +1,4 @@
+pub mod position;
 pub mod profile;
 pub mod points;
 pub mod market;

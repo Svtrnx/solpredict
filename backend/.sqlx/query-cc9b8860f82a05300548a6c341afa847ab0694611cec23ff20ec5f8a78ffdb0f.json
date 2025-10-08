@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO market_state (\n          market_id, yes_total_1e6, no_total_1e6, total_volume_1e6, participants\n        )\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (market_id) DO UPDATE\n        SET\n          yes_total_1e6     = EXCLUDED.yes_total_1e6,\n          no_total_1e6      = EXCLUDED.no_total_1e6,\n          total_volume_1e6  = EXCLUDED.total_volume_1e6,\n          participants      = EXCLUDED.participants,\n          updated_at        = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cc9b8860f82a05300548a6c341afa847ab0694611cec23ff20ec5f8a78ffdb0f"
+}

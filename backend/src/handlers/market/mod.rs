@@ -7,12 +7,11 @@ pub mod types;
 pub mod claim;
 mod place_bet;
 mod resolve;
-mod get;
 
 pub fn public_routes() -> Router<SharedState> {
     Router::new()
         .route("/markets", get(markets::list))
-        .route("/markets/{market_address}", get(get::handle))
+        .route("/markets/{market_address}", get(markets::handle))
 }
 
 pub fn protected_routes() -> Router<SharedState> {

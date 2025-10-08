@@ -9,10 +9,12 @@ type UseBetsQueryArgs = {
   pageSize?: number
 }
 
-export function useBetsQuery({ wallet, kind, pageSize = 10 }: UseBetsQueryArgs) {
+export function useBetsQuery({ wallet, kind, pageSize = 10 }: UseBetsQueryArgs)
+{
   return useInfiniteQuery({
     queryKey: ["bets", wallet ?? "me", kind, pageSize],
-    queryFn: async ({ pageParam, signal }) => {
+    queryFn: async ({ pageParam, signal }) =>
+    {
       return fetchBets({ wallet, kind, limit: 10, cursor: pageParam ?? null, signal })
     },
     initialPageParam: null as string | null,

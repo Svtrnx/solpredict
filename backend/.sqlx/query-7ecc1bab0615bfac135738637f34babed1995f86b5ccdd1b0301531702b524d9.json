@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO markets (\n          market_pda, authority_pubkey, tx_sig_create,\n          category, symbol,\n          market_type, comparator, bound_lo_1e6, bound_hi_1e6, end_date_utc,\n          feed_id, price_feed_account, mint,\n          initial_liquidity_1e6\n        )\n        VALUES ($1,$2,$3,\n                $4,$5,\n                $6,$7,$8,$9,$10::timestamptz,\n                $11,$12,$13,\n                $14)\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8",
+        "Timestamptz",
+        "Text",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7ecc1bab0615bfac135738637f34babed1995f86b5ccdd1b0301531702b524d9"
+}

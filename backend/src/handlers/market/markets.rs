@@ -1,11 +1,12 @@
-use axum::{extract::{Query, State}, Json, http::{StatusCode}};
+use axum::{extract::{Path, Query, State}, Json, http::{StatusCode}};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    handlers::market::types::{generate_title, TitleSpec},
+    handlers::market::types::{generate_title, TitleSpec, MarketDto},
     repo::market as market_repo,
-    state::SharedState,
+    state::SharedState, 
+    error::AppError
 };
 
 
@@ -24,7 +25,7 @@ impl From<&market_repo::MarketRowFetch> for TitleSpec {
 
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct MarketDto {
+pub struct MarketDtoV2 {
     id: Uuid,
     category: String,
     market_pda: String,
@@ -40,7 +41,7 @@ pub struct MarketDto {
 #[serde(rename_all="camelCase")]
 pub struct MarketsPageResponse {
     ok: bool,
-    items: Vec<MarketDto>,
+    items: Vec<MarketDtoV2>,
     next_cursor: Option<String>, // base64 "{updated_at}|{id}"
 }
 
@@ -64,6 +65,7 @@ pub fn fmt_usd(amount: f64) -> String {
     }
 }
 
+// ====== GET /v1/markets ======
 
 pub async fn list(
     State(state): State<SharedState>,
@@ -79,7 +81,7 @@ pub async fn list(
         q.sort.as_deref(),
     ).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;
 
-    let items = page.items.into_iter().map(|m| MarketDto{
+    let items = page.items.into_iter().map(|m| MarketDtoV2{
         id: m.id,
         title: generate_title(&TitleSpec::from(&m)),
         market_pda: m.market_pda,
@@ -92,4 +94,18 @@ pub async fn list(
     }).collect();
 
     Ok(Json(MarketsPageResponse{ ok: true, items, next_cursor: page.next_cursor }))
+}
+
+// ====== GET /v1/markets/{market_address} ======
+
+pub async fn handle(
+    State(state): State<SharedState>,
+    Path(market_address): Path<String>,
+) -> Result<Json<MarketDto>, AppError> {
+    let Some(row) = market_repo::find_by_address(&state.db.pool(), &market_address).await
+        .map_err(AppError::from)? else {
+            return Err(AppError::NotFound);
+        };
+
+    Ok(Json(MarketDto::from(row)))
 }

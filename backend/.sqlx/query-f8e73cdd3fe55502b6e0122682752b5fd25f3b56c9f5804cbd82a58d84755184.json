@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO market_positions (\n          market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim\n        )\n        VALUES ($1, $2, $3, $4, FALSE, NULL)\n        ON CONFLICT (market_id, user_pubkey) DO UPDATE\n        SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,\n            no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8e73cdd3fe55502b6e0122682752b5fd25f3b56c9f5804cbd82a58d84755184"
+}

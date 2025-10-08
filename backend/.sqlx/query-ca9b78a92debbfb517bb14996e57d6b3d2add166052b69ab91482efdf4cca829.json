@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO market_positions (\n          market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim\n        )\n        VALUES ($1, $2, 0, 0, TRUE, $3)\n        ON CONFLICT (market_id, user_pubkey) DO UPDATE\n        SET claimed      = TRUE,\n            tx_sig_claim = COALESCE(market_positions.tx_sig_claim, EXCLUDED.tx_sig_claim)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ca9b78a92debbfb517bb14996e57d6b3d2add166052b69ab91482efdf4cca829"
+}

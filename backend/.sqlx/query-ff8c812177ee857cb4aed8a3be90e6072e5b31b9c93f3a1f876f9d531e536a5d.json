@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id                                  AS \"id!: uuid::Uuid\",\n            market_pda                          AS \"market_pda!\",\n            status                              AS \"status!\",\n            COALESCE(price_feed_account, '')    AS \"price_feed_account!\",\n            end_date_utc                        AS \"end_date_utc?: chrono::DateTime<chrono::Utc>\"\n        FROM market_view\n        WHERE market_pda = $1\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: uuid::Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "market_pda!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "price_feed_account!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date_utc?: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      null,
+      true
+    ]
+  },
+  "hash": "ff8c812177ee857cb4aed8a3be90e6072e5b31b9c93f3a1f876f9d531e536a5d"
+}

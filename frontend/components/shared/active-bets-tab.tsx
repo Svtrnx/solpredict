@@ -11,18 +11,27 @@ import { prepareClaimTx } from "@/lib/services/market/marketService"
 import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
 import { showToast } from "@/components/shared/show-toast"
 import { Card, CardContent } from "@/components/ui/card"
-import { BetData as Bet } from "@/lib/types/bet"
+import type { BetData as Bet } from "@/lib/types/bet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 import {
-  ExternalLink, Clock, TrendingUp, TrendingDown, Activity,
-  XCircle, CheckCircle, RotateCcw, Sparkles, AlertCircle,
+  ExternalLink,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  XCircle,
+  CheckCircle,
+  RotateCcw,
+  Sparkles,
+  AlertCircle,
   ChevronDown,
+  Shuffle,
 } from "lucide-react"
 
-const FEE_BPS = 100;       // 1.00%
-const RESOLVER_BPS = 5;    // 0.05%
+const FEE_BPS = 100 // 1.00%
+const RESOLVER_BPS = 5 // 0.05%
 
 type ActiveBetsTabProps = {
   activeBets: Bet[]
@@ -54,7 +63,7 @@ function pSideForMath(bet: Bet): number | null {
   if (bet.currentPrice != null) return clamp01(bet.currentPrice)
   const pYes = pYesForDisplay(bet)
   if (pYes == null) return null
-  return bet.side === "yes" ? pYes : (1 - pYes)
+  return bet.side === "yes" ? pYes : 1 - pYes
 }
 
 function projectIfResolvedNow(bet: Bet) {
@@ -70,6 +79,31 @@ function projectIfResolvedNow(bet: Bet) {
   const netIfWin = (amount * (1 - totalFees)) / pSafe
   const lossIfLose = -amount
   return { win: netIfWin, loss: lossIfLose }
+}
+
+function projectMixedPosition(bet: Bet) {
+  // For mixed positions, we assume the amount is split between YES and NO
+  // The actual split would need to come from backend, but we'll estimate 50/50
+  const pYes = pYesForDisplay(bet)
+  if (pYes == null) {
+    return { yesWin: null, noWin: null, totalExposure: bet.amount }
+  }
+
+  const EPS = 1e-6
+  const pYesSafe = Math.min(Math.max(pYes, EPS), 1 - EPS)
+  const pNoSafe = 1 - pYesSafe
+
+  const totalFees = (FEE_BPS + RESOLVER_BPS) / 10_000
+  const halfAmount = bet.amount / 2 // Assuming 50/50 split
+
+  const yesWinPayout = (halfAmount * (1 - totalFees)) / pYesSafe
+  const noWinPayout = (halfAmount * (1 - totalFees)) / pNoSafe
+
+  return {
+    yesWin: yesWinPayout - halfAmount, // Net profit if YES wins
+    noWin: noWinPayout - halfAmount, // Net profit if NO wins
+    totalExposure: bet.amount,
+  }
 }
 
 function buildClaimInfo(bet: Bet) {
@@ -114,26 +148,29 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
     return da - db
   })
 
-  const handleClaim = useCallback(async (marketPda: string) => {
-    if (!wallet.publicKey) {
-      showToast("danger", "Connect wallet first.")
-      return
-    }
-    try {
-      setClaiming(marketPda)
-      const prep = await prepareClaimTx({ market_pda: marketPda })
-      if (!prep?.tx_base64) {
-        showToast("danger", "Server didn't return a transaction to sign.")
+  const handleClaim = useCallback(
+    async (marketPda: string) => {
+      if (!wallet.publicKey) {
+        showToast("danger", "Connect wallet first.")
         return
       }
-      const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection)
-      showToast("success", `Transaction sent: ${sig} | Bet claimed!`)
-    } catch (e: any) {
-      showToast("danger", e?.message || "Claim failed")
-    } finally {
-      setClaiming(null)
-    }
-  }, [wallet, connection])
+      try {
+        setClaiming(marketPda)
+        const prep = await prepareClaimTx({ market_pda: marketPda })
+        if (!prep?.tx_base64) {
+          showToast("danger", "Server didn't return a transaction to sign.")
+          return
+        }
+        const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection)
+        showToast("success", `Transaction sent: ${sig} | Bet claimed!`)
+      } catch (e: any) {
+        showToast("danger", e?.message || "Claim failed")
+      } finally {
+        setClaiming(null)
+      }
+    },
+    [wallet, connection],
+  )
 
   return (
     <div className="grid gap-3">
@@ -141,9 +178,11 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
         const urgency = getBetUrgency(bet.endDate || null)
         const isVoid = bet.marketOutcome === "void"
         const isSettledNeedingClaim = !!bet.needsClaim
+        const isMixed = bet.side === "mixed"
 
         const claimInfo = isSettledNeedingClaim ? buildClaimInfo(bet) : null
-        const scenarios = !isSettledNeedingClaim ? projectIfResolvedNow(bet) : null
+        const scenarios = !isSettledNeedingClaim && !isMixed ? projectIfResolvedNow(bet) : null
+        const mixedScenarios = !isSettledNeedingClaim && isMixed ? projectMixedPosition(bet) : null
 
         const pYes = pYesForDisplay(bet)
 
@@ -227,16 +266,26 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-bold mb-2 text-balance leading-tight line-clamp-2">{bet.title}</h3>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge
-                        variant="outline"
-                        className={`${
-                          bet.side === "yes"
-                            ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
-                            : "bg-rose-500/15 text-rose-300 border-rose-500/40"
-                        } font-bold text-[10px] px-2 py-0.5 tracking-wider`}
-                      >
-                        {bet.side.toUpperCase()}
-                      </Badge>
+                      {isMixed ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-gradient-to-r from-emerald-500/15 via-purple-500/15 to-rose-500/15 text-purple-300 border-purple-500/40 font-bold text-[10px] px-2 py-0.5 tracking-wider"
+                        >
+                          <Shuffle className="w-3 h-3 mr-1" />
+                          MIXED
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className={`${
+                            bet.side === "yes"
+                              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
+                              : "bg-rose-500/15 text-rose-300 border-rose-500/40"
+                          } font-bold text-[10px] px-2 py-0.5 tracking-wider`}
+                        >
+                          {bet.side.toUpperCase()}
+                        </Badge>
+                      )}
                       <span className="text-[12px] text-muted-foreground font-mono font-semibold">
                         {bet.amount} USDC
                       </span>
@@ -246,9 +295,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                           <span className="text-[12px] text-muted-foreground">·</span>
                           <div className="flex items-center gap-1">
                             <Activity className="w-3.5 h-3.5 text-blue-400" />
-                            <span className="text-[12px] text-blue-400 font-semibold">
-                              $123.2
-                            </span>
+                            <span className="text-[12px] text-blue-400 font-semibold">$123.2</span>
                           </div>
                         </>
                       )}
@@ -347,6 +394,65 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                   </Collapsible>
                 )}
 
+                {!isVoid && isMixed && mixedScenarios && (
+                  <div className="mb-3 p-2.5 rounded-lg bg-gradient-to-br from-purple-500/10 via-muted/30 to-purple-500/10 border border-purple-500/20">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Shuffle className="w-3 h-3 text-purple-400" />
+                        <span className="text-[10px] text-purple-300 uppercase tracking-widest font-bold">
+                          Hedged Position
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3 text-emerald-400" />
+                          If YES wins
+                        </span>
+                        <span className="font-bold text-emerald-400">
+                          {mixedScenarios.yesWin == null ? (
+                            "—"
+                          ) : (
+                            <>
+                              {mixedScenarios.yesWin >= 0 ? "+" : ""}
+                              {mixedScenarios.yesWin.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              USDC <span className="text-[9px] text-emerald-400/60">(net)</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <TrendingDown className="w-3 h-3 text-rose-400" />
+                          If NO wins
+                        </span>
+                        <span className="font-bold text-rose-400">
+                          {mixedScenarios.noWin == null ? (
+                            "—"
+                          ) : (
+                            <>
+                              {mixedScenarios.noWin >= 0 ? "+" : ""}
+                              {mixedScenarios.noWin.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              USDC <span className="text-[9px] text-rose-400/60">(net)</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div className="pt-1.5 mt-1.5 border-t border-purple-500/20 flex items-center justify-between text-[11px]">
+                        <span className="text-purple-300 font-semibold">Total Exposure</span>
+                        <span className="font-bold text-purple-400">
+                          {mixedScenarios.totalExposure.toFixed(2)} USDC
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {!isVoid && scenarios && (
                   <div className="mb-3 p-2.5 rounded-lg bg-muted/30 border border-border/30">
                     <div className="space-y-1.5">
@@ -356,7 +462,9 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                           If your side wins
                         </span>
                         <span className="font-bold text-emerald-400">
-                          {scenarios.win == null ? "—" : (
+                          {scenarios.win == null ? (
+                            "—"
+                          ) : (
                             <>
                               +
                               {scenarios.win.toLocaleString("en-US", {
@@ -402,7 +510,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                   <div className="flex items-center gap-1.5">
                     {isSettledNeedingClaim && (
                       <Button
-                      style={{width: 130}}
+                        style={{ width: 130 }}
                         size="lg"
                         disabled={claiming === bet.marketPda}
                         onClick={() => handleClaim(bet.marketPda)}
@@ -427,7 +535,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                     )}
                     <Link href={`/market/${bet.marketPda}`}>
                       <Button
-                      style={{width: 130}}
+                        style={{ width: 130 }}
                         variant="outline"
                         size="lg"
                         className="bg-transparent cursor-pointer hover:bg-accent/50 border-border/50 hover:border-border h-7 text-[11px] px-2.5 font-semibold width-[20px]"

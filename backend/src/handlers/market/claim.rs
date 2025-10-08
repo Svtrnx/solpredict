@@ -24,6 +24,8 @@ pub struct PrepareClaimResponse {
     pub tx_base64: String, // unsigned Transaction
 }
 
+// ====== POST /v1/markets/claim/tx ======
+
 pub async fn prepare_claim_tx(
     State(state): State<SharedState>,
     Extension(user): Extension<CurrentUser>,
