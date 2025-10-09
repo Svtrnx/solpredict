@@ -48,4 +48,19 @@ export const BetsResponseSchema = z.object({
 })
 export type BetsResponse = z.infer<typeof BetsResponseSchema>
 
+export const RecentBetSchema = z.object({
+  userAddress: z.string(),
+  side: z.enum(["yes", "no"]),
+  amount: z.number(),
+  timestamp: z.string(),
+  cursorId: z.number().int(),
+});
+
+export const RecentBetsResponseSchema = z.object({
+  items: z.array(RecentBetSchema),
+  nextCursor: z.number().int().nullable().transform(v => v ?? null),
+});
+
+export type RecentBet = z.infer<typeof RecentBetSchema>;
+export type RecentBetsResponse = z.infer<typeof RecentBetsResponseSchema>;
 

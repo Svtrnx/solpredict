@@ -89,9 +89,9 @@ pub async fn prepare_place_tx(
     else {
         return Err(AppError::NotFound);
     };
-    if m.status != "active" {
-        return Err(AppError::bad_request("market is not open"));
-    }
+    // if m.status != "active" {
+    //     return Err(AppError::bad_request("market is not open"));
+    // }
     if let Some(end) = m.end_date_utc {
         if end <= chrono::Utc::now() {
             return Err(AppError::bad_request("market already ended"));

@@ -1,12 +1,13 @@
 use axum::{extract::{Path, Query, State}, Json, http::{StatusCode}};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    handlers::market::types::{generate_title, TitleSpec, MarketDto},
-    repo::market as market_repo,
-    state::SharedState, 
-    error::AppError
+    handlers::market::types::{generate_title, MarketDto, TitleSpec}, 
+    repo::{bets as bets_repo, market as market_repo}, 
+    state::SharedState,
+    error::AppError, 
 };
 
 
@@ -108,4 +109,60 @@ pub async fn handle(
         };
 
     Ok(Json(MarketDto::from(row)))
+}
+
+// ====== GET /v1/markets/bets ======
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentBetDto {
+    user_address: String,
+    side: String,
+    amount: f64,
+    #[serde(with = "time::serde::rfc3339")]
+    timestamp: OffsetDateTime,
+    cursor_id: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentBetsPageDto {
+    items: Vec<RecentBetDto>,
+    next_cursor: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct RecentBetsQuery {
+    pub limit:      Option<i64>,
+    pub cursor:     Option<i64>,
+    #[serde(rename = "marketPda")]
+    pub market_pda: Option<String>,
+    pub address:    Option<String>,
+}
+
+pub async fn recent_bets(
+    State(state): State<SharedState>,
+    Query(q): Query<RecentBetsQuery>,
+) -> Result<Json<RecentBetsPageDto>, AppError> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+
+    let page = bets_repo::fetch_recent_bets(
+        state.db.pool(),
+        limit,
+        q.cursor,
+        q.market_pda.as_deref(),
+        q.address.as_deref(),
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let items = page.items.into_iter().map(|r| RecentBetDto {
+        user_address: r.user_address,
+        side: r.side,
+        amount: r.amount,
+        timestamp: r.timestamp,
+        cursor_id: r.cursor_id,
+    }).collect();
+
+    Ok(Json(RecentBetsPageDto { items, next_cursor: page.next_cursor }))
 }

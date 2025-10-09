@@ -10,8 +10,9 @@ mod resolve;
 
 pub fn public_routes() -> Router<SharedState> {
     Router::new()
-        .route("/markets", get(markets::list))
-        .route("/markets/{market_address}", get(markets::handle))
+    .route("/markets", get(markets::list))
+    .route("/markets/bets", get(markets::recent_bets))
+    .route("/markets/{market_address}", get(markets::handle))
 }
 
 pub fn protected_routes() -> Router<SharedState> {

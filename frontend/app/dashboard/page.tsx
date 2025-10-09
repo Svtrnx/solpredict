@@ -8,18 +8,20 @@ import { WalletAuthorizationGuard } from "@/components/wallet-authorization-guar
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton"
 
 interface UserData {
-  address: string
-  totalVolume: string
-  winRate: number
-  winRateChange: string
-  rankChange: number
-  totalBets: number
-  activeBets: number
-  rank: number
-  level: string
-  points: number
-  streak: number
-  joinDate: string
+  address: string;
+  totalVolume: number;
+  winRate: number;
+  winRateChange: number;
+  rankChange: number;
+  totalBets: number;
+  activeBets: number;
+  rank: number;
+  level: string;
+  points: number;
+  streak: number;
+  joinDate: string;
+  displayAddress?: string;
+  wallet?: string;
 }
 
 export default function DashboardPage() {

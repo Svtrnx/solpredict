@@ -1,5 +1,6 @@
-"use client";
+"use client"
 
+import Link from "next/link"
 import { useState, useEffect, useMemo, useCallback } from "react"
 
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -8,42 +9,27 @@ import { Connection } from "@solana/web3.js"
 
 import { Tooltip as Tooltip_, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ShimmerSkeleton, PulseSkeleton } from "@/components/ui/skeleton"
 import { SlidingNumber } from "@/components/ui/sliding-number"
-import { DualProgress } from "@/components/ui/dual-progress"
-import { CustomButton } from "@/components/ui/custom-button"
+import { RecentBets } from "@/components/market/recent-bets"
+import { ShimmerSkeleton } from "@/components/ui/skeleton"
+import PythChart from "@/components/pyth-price-chart"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AlertTriangle, BarChart3, Clock, DollarSign, Users, Copy, User, Check, Info, Lock } from "lucide-react"
 
-import { Tooltip, Area, AreaChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Bot,
-  Clock,
-  DollarSign,
-  Droplets,
-  TrendingUp,
-  Users,
-  Copy, 
-  User, 
-  Check,
-  ArrowRight
-} from "lucide-react"
-
-import { AIVsHumansSkeleton, ChartSkeleton, InsightsSkeleton, CountdownSkeleton, PriceCardSkeleton, BettingCardSkeleton } from "./skeletons"
-import {cn, fmtCents, fmtCompact, fmtPercent, diff } from "@/lib/utils"
+import { RecentBetsSkeleton, ChartSkeleton, PriceCardSkeleton, BettingCardSkeleton, InfoBarSkeleton } from "./skeletons"
+import { openStepper, startStep, completeStep } from "@/lib/features/resolutionStepperSlice"
+import { ResolutionStepper } from "@/components/resolution-stepper"
 import { getMarket } from "@/lib/services/market/marketService"
 import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
+import { useAppSelector, useAppDispatch } from "@/lib/hooks"
+import { cn, fmtCents, fmtCompact, diff } from "@/lib/utils"
 import { prepareBet } from "@/lib/services/bet/betsService"
 import { showToast } from "@/components/shared/show-toast"
+import type { Market, TimeLeft } from "@/lib/types"
 import { useMobile } from "@/hooks/use-mobile"
-import { Market, TimeLeft } from "@/lib/types"
-import { useAppSelector } from "@/lib/hooks"
 
 import { resolveMarketWithPyth } from "@/lib/features/market/resolve"
 
@@ -53,126 +39,132 @@ interface PayoutCalculation {
   profit: number
 }
 
-type ChartPoint = {
-  timestamp: string;   
-  ts: number;          
-  ai: number;
-  community: number;
-  volume: number;
-  participants: number;
-};
-
-type TooltipProps = {
-  active?: boolean;
-  label?: number | string;
-  payload?: Array<{
-    value: number;
-    name: string;
-    payload: ChartPoint;
-  }>;
-};
-
 function CountdownTimer({ endAt }: { endAt: string }) {
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => diff(endAt));
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => diff(endAt))
 
   useEffect(() => {
-    const id = setInterval(() => setTimeLeft(diff(endAt)), 1000);
-    return () => clearInterval(id);
-  }, [endAt]);
+    const id = setInterval(() => setTimeLeft(diff(endAt)), 1000)
+    return () => clearInterval(id)
+  }, [endAt])
 
   return (
-    <Card className="glass glow">
-      <CardContent className="pt-6">
-        <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-8">
-          <div className="flex items-center space-x-2 text-muted-foreground">
-            <Clock className="w-5 h-5" />
-            <span className="text-sm sm:text-base">Time Remaining:</span>
-          </div>
-          <div className="flex space-x-2 sm:space-x-4">
-            {Object.entries(timeLeft).map(([unit, value]) => (
-              <div key={unit} className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold gradient-text tabular-nums">
-                  {/* {value.toString().padStart(2, "0")} */}
-                  <SlidingNumber value={value} padStart /> 
-                </div>
-                <div className="text-xs sm:text-sm text-muted-foreground capitalize">{unit}</div>
-              </div>
-            ))}
-          </div>
+    <div className="flex items-center space-x-2">
+      {Object.entries(timeLeft).map(([unit, value]) => (
+        <div key={unit} className="flex items-center space-x-1">
+          <span className="text-sm font-semibold tabular-nums">
+            <SlidingNumber value={value} padStart />
+          </span>
+          <span className="text-xs text-muted-foreground">{unit.slice(0, 1)}</span>
         </div>
-      </CardContent>
-    </Card>
-  );
+      ))}
+    </div>
+  )
 }
 
 const PriceCard = ({
   side,
   price,
+  volume,
   isYes,
   className,
+  onClick,
+  disabled,
 }: {
   side: string
   price: number
+  volume: number
   isYes: boolean
   className?: string
+  onClick?: () => void
+  disabled?: boolean
 }) => (
-  <Card className={`glass relative overflow-hidden ${className}`}>
+  <Card
+    onClick={disabled ? undefined : onClick}
+    className={cn(
+      "glass relative overflow-hidden transition-all duration-200 border-2",
+      !disabled && "hover:scale-[1.01] cursor-pointer",
+      !disabled && (isYes ? "hover:border-emerald-500/40" : "hover:border-rose-500/40"),
+      disabled && "opacity-60 cursor-not-allowed",
+      className,
+    )}
+  >
     <div
-      className={`absolute inset-0 bg-gradient-to-br ${isYes ? "from-green-500/10 via-transparent to-green-600/5" : "from-red-500/10 via-transparent to-red-600/5"}`}
-    ></div>
-    <CardHeader className="relative z-10">
-      <CardTitle className="flex items-center justify-between">
-        <span className={`${isYes ? "text-green-400" : "text-red-400"} font-bold`}>{side}</span>
-        <TrendingUp className={`w-5 h-5 ${isYes ? "text-green-400" : "text-red-400 rotate-180"}`} />
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="relative z-10 text-center space-y-4">
-      <div
-        className={`text-5xl font-bold ${isYes ? "text-green-400" : "text-red-400"} drop-shadow-[0_0_15px_rgba(${isYes ? "34,197,94" : "239,68,68"},0.6)]`}
-      >
-        {fmtCents(price)}
+      className={cn(
+        "absolute inset-0 pointer-events-none",
+        isYes
+          ? "bg-gradient-to-br from-emerald-500/[0.03] via-transparent to-transparent"
+          : "bg-gradient-to-br from-rose-500/[0.03] via-transparent to-transparent",
+      )}
+    />
+
+    <CardContent className="relative p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <Badge
+          variant="outline"
+          className={cn(
+            "text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 shadow-sm backdrop-blur-sm",
+            isYes
+              ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400"
+              : "bg-rose-500/10 border-rose-500/40 text-rose-400",
+          )}
+        >
+          {side}
+        </Badge>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 font-semibold">
+          Share Price
+        </span>
       </div>
-      <div className="text-sm text-muted-foreground">Current Price</div>
-      <div className={`text-xs ${isYes ? "text-green-400/80" : "text-red-400/80"} font-medium`}>
-        {fmtPercent(price, 1)} probability
+
+      <div className="text-center py-2">
+        <div className="text-3xl font-bold tabular-nums tracking-tight bg-gradient-to-br from-foreground via-foreground to-foreground/70 bg-clip-text">
+          {fmtCents(price)}
+        </div>
+        <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider mt-0.5 font-medium">
+          per share
+        </div>
+      </div>
+
+      <div className="glass rounded-lg p-2 border border-border/40 bg-gradient-to-br from-accent/5 via-transparent to-purple-500/5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <div className="p-1 rounded bg-purple-500/10">
+              <BarChart3 className="w-3 h-3 text-purple-400" />
+            </div>
+            <span className="text-xs text-muted-foreground/70 font-medium">Side Volume</span>
+          </div>
+          <span className="text-sm font-bold tabular-nums bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+            {fmtCompact(volume)} USDC
+          </span>
+        </div>
       </div>
     </CardContent>
   </Card>
 )
 
 export default function MarketPage() {
+  const dispatch = useAppDispatch()
+
   const isMobile = useMobile()
   const router = useRouter()
   const { isAuthorized } = useAppSelector((state) => state.wallet)
-  const { id: raw } = useParams<{ id: string | string[] }>();
-  const market_pda = Array.isArray(raw) ? raw[0] : raw ?? "";
+  const { id: raw } = useParams<{ id: string | string[] }>()
+  const market_pda = Array.isArray(raw) ? raw[0] : (raw ?? "")
 
   const [betAmount, setBetAmount] = useState("")
   const [selectedSide, setSelectedSide] = useState<"yes" | "no" | null>(null)
   const [isPlacingBet, setIsPlacingBet] = useState(false)
-  
-  const walletBalance = useAppSelector(s => s.wallet.balance)
+
+  const walletBalance = useAppSelector((s) => s.wallet.balance)
   const numericBalance = walletBalance ?? 0
 
   const [isLoading, setIsLoading] = useState(true)
-  
-  const [market, setMarket] = useState<Market | null>(null);
-  const [error, setError]   = useState<string | null>(null);
+
+  const [market, setMarket] = useState<Market | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const [copied, setCopied] = useState(false)
 
   const quickAmounts = [1, 5, 50, 100]
-
-  const calcCpmImpact = (amount: number, price: number, L: number) => {
-    if (L <= 0) return 0;
-    const sensitivity = price * (1 - price);
-    return Math.min(0.5, (amount / Math.max(L, 1)) * (1 / Math.max(sensitivity, 0.05)));
-  };
-
-  const calculatePriceImpact = useCallback((amount: number, side: "yes" | "no") => {
-    const p = side === "yes" ? market?.yesPrice ?? 0.5 : market?.noPrice ?? 0.5;
-    return calcCpmImpact(amount, p, market?.liquidity ?? 0);
-  }, [market]);
 
   const calculatePayout = useCallback((): PayoutCalculation | null => {
     if (!betAmount || !selectedSide || !market) return null
@@ -185,233 +177,164 @@ export default function MarketPage() {
   }, [betAmount, selectedSide, market])
 
   const payout = calculatePayout()
-  const priceImpact = useMemo(
-    () => (betAmount && selectedSide && market ? calculatePriceImpact(Number.parseFloat(betAmount), selectedSide) : 0),
-    [betAmount, selectedSide, calculatePriceImpact, market],
-  )
 
   const wallet = useWallet()
   const connection = useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
-
+  type ResolveStepId = "post:init" | "post:write" | "resolve"
 
   async function handleResolve() {
-    await resolveMarketWithPyth({
-      connection: connection,
-      walletAdapter: wallet,
-      marketPda: market_pda
-    })
+    try {
+      const idxOf: Record<ResolveStepId, number> = {
+        "post:init": 0,
+        "post:write": 1,
+        resolve: 2,
+      }
+
+      await resolveMarketWithPyth({
+        connection,
+        walletAdapter: wallet,
+        marketPda: market_pda,
+        closeUpdateAccounts: true,
+        onProgress: (e) => {
+          if (e.kind === "start") {
+            const stepIndex = idxOf[e.step]
+            dispatch(startStep(stepIndex))
+          } else if (e.kind === "success") {
+            const stepIndex = idxOf[e.step]
+            if (e.step === "post:write") {
+              dispatch(completeStep({ stepIndex: 0, status: "success" }))
+              dispatch(completeStep({ stepIndex: 1, status: "success" }))
+              return
+            }
+            dispatch(completeStep({ stepIndex, status: "success" }))
+          } else if (e.kind === "warning") {
+            const stepIndex = idxOf[e.step]
+            dispatch(
+              completeStep({
+                stepIndex,
+                status: "warning",
+                message: e.message,
+              }),
+            )
+          } else if (e.kind === "error") {
+            const stepIndex = idxOf[e.step]
+            dispatch(
+              completeStep({
+                stepIndex,
+                status: "error",
+                message: e.error,
+              }),
+            )
+          }
+        },
+      })
+
+      console.log("Market resolution completed")
+    } catch (err: any) {
+      console.error("Failed to resolve market:", err)
+    }
   }
 
   const handleBet = useCallback(async () => {
-    if (!selectedSide || !betAmount || !market) return;
+    if (!selectedSide || !betAmount || !market) return
 
     try {
-      setIsPlacingBet(true);
+      setIsPlacingBet(true)
 
-      const amount = Number.parseFloat(String(betAmount).replace(",", "."));
+      const amount = Number.parseFloat(String(betAmount).replace(",", "."))
       if (!Number.isFinite(amount) || amount <= 0) {
-        showToast("danger", "Enter a valid amount");
-        return;
+        showToast("danger", "Enter a valid amount")
+        return
       }
       if (amount > numericBalance) {
-        showToast("danger", "Insufficient balance");
-        return;
+        showToast("danger", "Insufficient balance")
+        return
       }
 
-      // prepare (unsigned tx)
       const prep = await prepareBet({
         market_pda: market_pda,
         side: selectedSide,
         amount_ui: amount,
-      });
+      })
 
       if (!prep?.tx_base64) {
-        showToast("danger", "Server didn't return a transaction to sign.");
-        return;
+        showToast("danger", "Server didn't return a transaction to sign.")
+        return
       }
 
-      // sign & send
-      const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection);
-      showToast("success", `Transaction sent: ${sig} | Bet placed!`);
+      const sig = await signAndSendBase64Tx(prep.tx_base64, wallet, connection)
+      showToast("success", `Transaction sent: ${sig} | Bet placed!`)
 
-
-      setBetAmount("");
-      setSelectedSide(null);
-      // showToast("success", "Bet placed!");
-
-      const fresh = await getMarket(market_pda);
-      setMarket(fresh);
+      setBetAmount("")
+      setSelectedSide(null)
+      const fresh = await getMarket(market_pda)
+      setMarket(fresh)
     } catch (err: any) {
-      const msg = String(err?.message ?? err);
+      const msg = String(err?.message ?? err)
       if (/blockhash/i.test(msg)) {
-        showToast("danger", "Transaction expired. Please try again.");
+        showToast("danger", "Transaction expired. Please try again.")
       } else {
-        showToast("danger", "Failed to place bet.");
+        showToast("danger", "Failed to place bet.")
       }
-      console.error(err);
+      console.error(err)
     } finally {
-      setIsPlacingBet(false);
+      setIsPlacingBet(false)
     }
-  }, [selectedSide, betAmount, market, numericBalance, wallet, connection, market_pda]);
+  }, [selectedSide, betAmount, market, numericBalance, wallet, connection, market_pda])
 
   useEffect(() => {
-    let alive = true;
-      (async () => {
-        try {
-          setIsLoading(true);
-          setError(null);
-          const data = await getMarket(market_pda);
-          if (alive) setMarket(data);
-        } catch (e: any) {
-          if (alive) setError(e?.message ?? "Failed to load market");
-        } finally {
-          if (alive) setIsLoading(false);
-        }
-      })();
-      return () => { alive = false; };
-  }, [market_pda]);
-
-  // const handleBet = useCallback(async () => {
-  //   if (!selectedSide || !betAmount) return
-  //   setIsPlacingBet(true)
-
-  //   console.log(`Betting ${betAmount} SOL on ${selectedSide.toUpperCase()}`)
-  //   setIsPlacingBet(false)
-  //   setBetAmount("")
-  //   setSelectedSide(null)
-  // }, [selectedSide, betAmount])
+    let alive = true
+    ;(async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const data = await getMarket(market_pda)
+        if (alive) setMarket(data)
+      } catch (e: any) {
+        if (alive) setError(e?.message ?? "Failed to load market")
+      } finally {
+        if (alive) setIsLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [market_pda])
 
   const handleQuickAmount = useCallback((amount: number) => {
     setBetAmount(amount.toString())
   }, [])
 
-  const predictionHistory = useMemo<ChartPoint[]>(
-    () => [
-      // Day 1 (2025-01-01)
-      { timestamp: "2025-01-01T00:00:00Z", ts: Date.parse("2025-01-01T00:00:00Z"), ai: 45, community: 52, volume: 125000, participants: 890 },
-      { timestamp: "2025-01-01T03:00:00Z", ts: Date.parse("2025-01-01T03:00:00Z"), ai: 47, community: 54, volume: 132000, participants: 905 },
-      { timestamp: "2025-01-01T06:00:00Z", ts: Date.parse("2025-01-01T06:00:00Z"), ai: 48, community: 58, volume: 145000, participants: 920 },
-      { timestamp: "2025-01-01T09:00:00Z", ts: Date.parse("2025-01-01T09:00:00Z"), ai: 50, community: 61, volume: 156000, participants: 935 },
-      { timestamp: "2025-01-01T12:00:00Z", ts: Date.parse("2025-01-01T12:00:00Z"), ai: 52, community: 65, volume: 167000, participants: 950 },
-      { timestamp: "2025-01-01T15:00:00Z", ts: Date.parse("2025-01-01T15:00:00Z"), ai: 54, community: 68, volume: 178000, participants: 965 },
-      { timestamp: "2025-01-01T18:00:00Z", ts: Date.parse("2025-01-01T18:00:00Z"), ai: 56, community: 70, volume: 189000, participants: 980 },
-      { timestamp: "2025-01-01T21:00:00Z", ts: Date.parse("2025-01-01T21:00:00Z"), ai: 58, community: 72, volume: 201000, participants: 995 },
-
-      // Day 2 (2025-01-02)
-      { timestamp: "2025-01-02T00:00:00Z", ts: Date.parse("2025-01-02T00:00:00Z"), ai: 60, community: 74, volume: 215000, participants: 1010 },
-      { timestamp: "2025-01-02T03:00:00Z", ts: Date.parse("2025-01-02T03:00:00Z"), ai: 61, community: 76, volume: 228000, participants: 1025 },
-      { timestamp: "2025-01-02T06:00:00Z", ts: Date.parse("2025-01-02T06:00:00Z"), ai: 62, community: 78, volume: 241000, participants: 1040 },
-      { timestamp: "2025-01-02T09:00:00Z", ts: Date.parse("2025-01-02T09:00:00Z"), ai: 64, community: 79, volume: 254000, participants: 1055 },
-      { timestamp: "2025-01-02T12:00:00Z", ts: Date.parse("2025-01-02T12:00:00Z"), ai: 65, community: 80, volume: 267000, participants: 1070 },
-      { timestamp: "2025-01-02T15:00:00Z", ts: Date.parse("2025-01-02T15:00:00Z"), ai: 66, community: 81, volume: 280000, participants: 1085 },
-      { timestamp: "2025-01-02T18:00:00Z", ts: Date.parse("2025-01-02T18:00:00Z"), ai: 67, community: 82, volume: 293000, participants: 1100 },
-      { timestamp: "2025-01-02T21:00:00Z", ts: Date.parse("2025-01-02T21:00:00Z"), ai: 67, community: 82, volume: 306000, participants: 1115 },
-    ],
-    []
-  );
-
-  const df = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" });
-  const nf = new Intl.NumberFormat("en-US");
-
-  const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
-    if (!active || !payload || payload.length === 0) return null;
-
-    const d = payload[0].payload;
-    const ts = typeof label === "number" ? label : d.ts;
-    const time = df.format(new Date(ts));
-
-    return (
-      <div className="bg-background/95 backdrop-blur-sm p-4 rounded-lg border border-accent/30 shadow-xl">
-        <p className="font-semibold text-foreground mb-2">
-          {time}
-        </p>
-
-        <div className="space-y-1">
-          <div className="flex items-center justify-between space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50" />
-              <span className="text-sm text-muted-foreground">AI Prediction:</span>
-            </div>
-            <span className="text-sm font-medium text-cyan-400">{d.ai}%</span>
-          </div>
-
-          <div className="flex items-center justify-between space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-400/50" />
-              <span className="text-sm text-muted-foreground">Community:</span>
-            </div>
-            <span className="text-sm font-medium text-green-400">{d.community}%</span>
-          </div>
-
-          <div className="border-t border-accent/20 pt-2 mt-2">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Volume:</span>
-              <span>${nf.format(d.volume)}</span>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Participants:</span>
-              <span>{nf.format(d.participants)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (isLoading) {
     return (
       <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
         <div className="absolute inset-0 radial-glow"></div>
-        {/* <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
         <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <PulseSkeleton className="h-5 w-16 rounded-full" />
-              <PulseSkeleton className="h-5 w-12 rounded-full" delay={100} />
-            </div>
-
+            {/* Title skeleton */}
             <div className="space-y-3">
               <ShimmerSkeleton className="h-10 w-full max-w-4xl" />
               <ShimmerSkeleton className="h-10 w-3/4 max-w-3xl" />
             </div>
 
-            <div className="space-y-2">
-              <PulseSkeleton className="h-5 w-full max-w-4xl" delay={200} />
-              <PulseSkeleton className="h-5 w-5/6 max-w-3xl" delay={300} />
-              <PulseSkeleton className="h-5 w-2/3 max-w-2xl" delay={400} />
+            <InfoBarSkeleton />
+
+            {/* Price cards grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <PriceCardSkeleton isYes={true} />
+              <PriceCardSkeleton isYes={false} />
             </div>
-          </div>
 
-          <CountdownSkeleton />
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <PriceCardSkeleton isYes={true} />
-                <PriceCardSkeleton isYes={false} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 space-y-6">
+                <ChartSkeleton />
               </div>
 
-              <div className="flex justify-center">
-                <ShimmerSkeleton className="h-3 w-full max-w-md rounded-full" />
+              <div className="space-y-6">
+                <BettingCardSkeleton />
+                <RecentBetsSkeleton />
               </div>
-
-              {isAuthorized && <BettingCardSkeleton />}
-
-              <ChartSkeleton />
-            </div>
-
-            <div className="space-y-6">
-              <InsightsSkeleton />
-              <AIVsHumansSkeleton />
-            </div>
-          </div>
-
-          <div className="flex justify-center items-center py-8">
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <div className="w-5 h-5 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
-              <span className="text-sm">Loading market details...</span>
             </div>
           </div>
         </div>
@@ -427,168 +350,661 @@ export default function MarketPage() {
           <p className="text-muted-foreground text-sm">{error ?? "Unknown error"}</p>
         </div>
       </div>
-    );
+    )
   }
 
   const handleBlur = () => {
-    const n = parseFloat(betAmount.replace(",", "."))
+    const n = Number.parseFloat(betAmount.replace(",", "."))
     if (!Number.isFinite(n) || n <= 0) return setBetAmount("")
     const clamped = Math.min(n, numericBalance)
     setBetAmount(clamped.toFixed(2))
   }
 
-  const statusLabel = { open: "Active", locked: "Locked", settled: "Settled", void: "Void" }[market.status];
-  const canPlace =
-    !!selectedSide &&
-    !!betAmount &&
-    Number.parseFloat(betAmount) <= numericBalance &&
-    !isPlacingBet;
-    
+  const statusLabel = { open: "Active", locked: "Locked", settled: "Settled", void: "Void" }[market.status]
+  const canPlace = !!selectedSide && !!betAmount && Number.parseFloat(betAmount) <= numericBalance && !isPlacingBet
+
+  const isLocked = market?.status === "locked" || market?.status === 'void' || market?.status === "settled"
+  const hasEnded = new Date(market.endDate) <= new Date()
+  const canResolve = hasEnded && (market.status === "open" || market.status === "locked")
+  const isVoid = market?.status === "void"
+  const isSettled = market?.status === "settled"
+
+  const handleCopy = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
   return (
     <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
       <div className="absolute inset-0 radial-glow"></div>
-      {/* <div className="absolute top-20 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
       <div className="relative z-10 max-w-7xl mx-auto p-6 space-y-8">
         <div className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <Badge variant="secondary" className="bg-purple-600/20 text-purple-500 border-purple-500/30">
-              {market.category.charAt(0).toUpperCase() + market.category.slice(1)}
-            </Badge>
-            <Badge variant="outline" className="glass">
-              <Clock className="w-3 h-3 mr-1" />
-              {statusLabel}
-            </Badge>
+          <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight animate-fade-in-up animate-spring">
+            {market.title}
+          </h1>
+
+          <div className="glass p-4 rounded-xl border border-accent/30 animate-fade-in-up animation-delay-100 animate-staggered">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary" className="bg-purple-600/20 text-purple-500 border-purple-500/30">
+                  {market.category.charAt(0).toUpperCase() + market.category.slice(1)}
+                </Badge>
+                <Badge variant="outline" className="glass">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {statusLabel}
+                </Badge>
+              </div>
+
+              <div className="h-4 w-px bg-border hidden sm:block"></div>
+
+              <div className="flex items-center space-x-2 text-muted-foreground">
+                <User className="w-4 h-4" />
+                <span className="text-xs">Creator:</span>
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip_>
+                    <TooltipTrigger asChild>
+                      <span className="font-mono text-xs cursor-pointer hover:text-foreground transition-colors">
+                        {market.creator.slice(0, 6)}...{market.creator.slice(-4)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="p-2 bg-card border border-border">
+                      <div className="flex flex-col gap-2 min-w-[200px]">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {handleCopy(market.creator)}}
+                            className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                          >
+                            {copied ? (
+                              <>
+                                <Check className="w-3 h-3 mr-1" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 mr-1" />
+                                Copy
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                              asChild
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                            >
+                              <Link href={`/profile/${market.creator}`} target="_blank" rel="noopener noreferrer">
+                                <User className="w-3 h-3 mr-1" />
+                                Profile
+                              </Link>
+                            </Button>
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip_>
+                </TooltipProvider>
+              </div>
+
+              <div className="h-4 w-px bg-border hidden sm:block"></div>
+
+              <div className="flex items-center space-x-4 text-muted-foreground">
+                <div className="flex items-center space-x-1">
+                  <DollarSign className="w-4 h-4" />
+                  <span className="text-xs font-semibold text-foreground">
+                    {fmtCompact(market.totalVolume)} <span className="text-[#737171] text-[10px] ml-0.5">USDC</span>
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Users className="w-4 h-4" />
+                  <span className="text-xs font-semibold text-foreground">
+                    {new Intl.NumberFormat("en-US").format(market.participants)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-4 w-px bg-border hidden sm:block"></div>
+
+              <div className="flex items-center space-x-2 text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <CountdownTimer endAt={market.endDate} />
+              </div>
+            </div>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-bold gradient-text leading-tight">{market.title}</h1>
-          {/* <p className="text-lg text-muted-foreground max-w-4xl">{market.description}</p> */}
-        </div>
-        <Button onClick={handleResolve} className="w-100 cursor-pointer">Resolve Market</Button>
-        <CountdownTimer endAt={market.endDate} />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <PriceCard side="YES" price={market.yesPrice} isYes={true} className="glow-green" />
-              <PriceCard side="NO" price={market.noPrice} isYes={false} className="glow" />
-            </div>
-
-            <div className="flex justify-center">
-              <DualProgress
-                yesValue={market.yesPrice * 100}
-                noValue={market.noPrice * 100}
-                className="h-3 w-full max-w-md"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="animate-slide-left animation-delay-150">
+              <PriceCard
+                side="YES"
+                price={market.yesPrice}
+                volume={market.yesTotalVolume}
+                isYes={true}
+                className="glow-green"
+                onClick={() => setSelectedSide(selectedSide === "yes" ? null : "yes")}
+                disabled={isLocked}
               />
             </div>
+            <div className="animate-slide-right animation-delay-150">
+              <PriceCard
+                side="NO"
+                price={market.noPrice}
+                volume={market.noTotalVolume}
+                isYes={false}
+                className="glow"
+                onClick={() => setSelectedSide(selectedSide === "no" ? null : "no")}
+                disabled={isLocked}
+              />
+            </div>
+          </div>
 
-            {isAuthorized && market.status == "open" && (
-              <Card className="glass glow-cyan">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Place Your Bet</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button
-                      variant={selectedSide === "yes" ? "default" : "outline"}
-                      className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
-                        selectedSide === "yes"
-                          ? "bg-emerald-600/80 hover:bg-emerald-800 text-white glow-green scale-105"
-                          : "glass hover:bg-emerald-600/20 hover:border-emerald-500/50"
-                      }`}
-                      onClick={() => setSelectedSide("yes")}
-                    >
-                      <TrendingUp className="w-5 h-5 mr-2" />
-                      Buy YES
-                    </Button>
-                    <Button
-                      variant={selectedSide === "no" ? "default" : "outline"}
-                      className={`h-16 text-lg cursor-pointer transition-all duration-300 ${
-                        selectedSide === "no"
-                          ? "bg-rose-600/80 hover:bg-rose-800 text-white glow scale-105"
-                          : "glass hover:bg-rose-600/20 hover:border-rose-500/50"
-                      }`}
-                      onClick={() => setSelectedSide("no")}
-                    >
-                      <TrendingUp className="w-5 h-5 mr-2 rotate-180" />
-                      Buy NO
-                    </Button>
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 space-y-6 animate-fade-in animation-delay-250">
+              <PythChart symbol={market.symbol} feedId={market.feedId} />
+            </div>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="bet-amount">Amount (USDC)</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setBetAmount(numericBalance.toFixed(2))}
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        MAX
-                      </Button>
-                    </div>
-
-                    <Input
-                      id="bet-amount"
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={betAmount}
-                      // onChange={(e) => onAmountChange(e.target.value)}
-                      onChange={(e) => setBetAmount(e.target.value)}
-                      className="glass text-lg h-12"
-                      min="0"
-                      max={numericBalance}
-                      step="0.01"
-                      onBlur={handleBlur}
-                    />
-
-                    <div className="flex space-x-2">
-                      {quickAmounts.map((amount) => (
-                        <Button
-                          key={amount}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleQuickAmount(amount)}
-                          className="glass cursor-pointer hover:bg-accent/20 flex-1"
-                          disabled={amount > numericBalance}
-                        >
-                          {amount} USDC
-                        </Button>
-                      ))}
-                    </div>
-
-                    {betAmount && Number.parseFloat(betAmount) > numericBalance && (
-                      <div className="flex items-center space-x-2 text-red-400 text-sm">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span>Insufficient balance</span>
+            <div className="space-y-6 animate-fade-in-up animation-delay-300">
+              {isVoid && (
+                <Card className="glass border-2 border-orange-500/30">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-2 border-orange-500/40 shadow-lg shadow-orange-500/20">
+                        <AlertTriangle className="w-8 h-8 text-orange-400" />
                       </div>
-                    )}
-                  </div>
-
-                  {selectedSide && betAmount && payout && Number.parseFloat(betAmount) <= numericBalance && (
-                    <div className="glass p-6 rounded-lg space-y-4 border border-accent/20 bg-transparent">
-                      <h4 className="font-semibold text-lg">Order Summary</h4>
-
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold text-orange-400">Market Voided</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market has been voided and cancelled. All bets placed on this market will be refunded to
+                          participants.
+                        </p>
+                      </div>
+                      <div className="glass p-4 rounded-lg border border-orange-500/30 w-full bg-gradient-to-br from-orange-500/5 via-transparent to-transparent">
                         <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Side:</span>
-                            <span
-                              className={`font-semibold ${selectedSide === "yes" ? "text-green-400" : "text-red-400"}`}
-                            >
-                              {selectedSide.toUpperCase()}
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Total Volume</span>
+                            <span className="text-lg font-bold text-foreground">
+                              {fmtCompact(market.totalVolume)} USDC
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Amount:</span>
-                            <span className="font-semibold">{betAmount} SOL</span>
+                          <div className="text-xs text-muted-foreground/70">
+                            Will be refunded to {market.participants} participants
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Price:</span>
+                        </div>
+                      </div>
+                      {market.settler && (
+                        <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Voided by</span>
+                            <TooltipProvider delayDuration={100}>
+                              <Tooltip_>
+                                <TooltipTrigger asChild>
+                                  <span className="font-mono text-xs cursor-pointer hover:text-[#a9a9a9] transition-colors">
+                                    {market.settler.slice(0, 11)}...{market.settler.slice(-9)}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="p-2 bg-card border border-border">
+                                  <div className="flex flex-col gap-2 min-w-[200px]">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {handleCopy(market.settler ? market.settler : "")}}
+                                        className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                      >
+                                        {copied ? (
+                                          <>
+                                            <Check className="w-3 h-3 mr-1" />
+                                            Copied
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy className="w-3 h-3 mr-1" />
+                                            Copy
+                                          </>
+                                        )}
+                                      </Button>
+                                      <Button
+                                          asChild
+                                          variant="outline"
+                                          size="sm"
+                                          className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                        >
+                                          <Link href={`/profile/${market.settler}`} target="_blank" rel="noopener noreferrer">
+                                            <User className="w-3 h-3 mr-1" />
+                                            Profile
+                                          </Link>
+                                        </Button>
+                                    </div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip_>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      )}
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Status</span>
+                          <Badge variant="outline" className="bg-orange-500/10 border-orange-500/30 text-orange-400">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            Void
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isSettled && (
+                <Card className="glass border-2 border-emerald-500/30">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border-2 border-emerald-500/40 shadow-lg shadow-emerald-500/20">
+                        <Check className="w-8 h-8 text-emerald-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold gradient-text">Market Settled</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market has been resolved. Winners can claim their payouts.
+                        </p>
+                      </div>
+                      <div className="glass p-4 rounded-lg border border-emerald-500/30 w-full bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Winning Side</span>
+                            <Badge
+                              className={cn(
+                                "text-sm font-bold",
+                                market.yesPrice === 1
+                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                  : "bg-rose-500/20 text-rose-400 border-rose-500/30",
+                              )}
+                            >
+                              {market.yesPrice === 1 ? "YES" : "NO"}
+                            </Badge>
+                          </div>
+                          <div className="h-px bg-border/50"></div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Total Volume</span>
+                            <span className="text-lg font-bold text-foreground">
+                              {fmtCompact(market.totalVolume)} USDC
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Participants</span>
+                            <span className="font-semibold text-foreground">{market.participants}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {market.settler && (
+                        <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Resolved by</span>
+                            <span className="text-xs font-mono text-foreground">
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip_>
+                                  <TooltipTrigger asChild>
+                                    <span className="font-mono text-xs cursor-pointer hover:text-[#a9a9a9] transition-colors">
+                                      {market.settler.slice(0, 11)}...{market.settler.slice(-9)}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="p-2 bg-card border border-border">
+                                    <div className="flex flex-col gap-2 min-w-[200px]">
+                                      <div className="flex gap-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {handleCopy(market.settler ? market.settler : "")}}
+                                          className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                        >
+                                          {copied ? (
+                                            <>
+                                              <Check className="w-3 h-3 mr-1" />
+                                              Copied
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-3 h-3 mr-1" />
+                                              Copy
+                                            </>
+                                          )}
+                                        </Button>
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            size="sm"
+                                            className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                          >
+                                            <Link href={`/profile/${market.settler}`} target="_blank" rel="noopener noreferrer">
+                                              <User className="w-3 h-3 mr-1" />
+                                              Profile
+                                            </Link>
+                                          </Button>
+                                      </div>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip_>
+                              </TooltipProvider>
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Resolved at</span>
+                          <span className="text-xs font-mono text-foreground">
+                            {new Date(market.endDate).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      {isAuthorized && (
+                        <Button onClick={() => window.location.href = '/dashboard'} className="w-full h-11 text-sm font-bold cursor-pointer bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/20">
+                          Claim Winnings
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!isAuthorized && canResolve && (
+                <Card className="glass border-2 border-purple-500/30">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-gradient-to-br from-purple-500/20 to-purple-600/20 border-2 border-purple-500/40 shadow-lg shadow-purple-500/20">
+                        <DollarSign className="w-8 h-8 text-purple-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold gradient-text">Earn Resolver Fee</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market has ended and needs to be resolved. Connect your wallet to resolve this market and
+                          earn the resolver fee.
+                        </p>
+                      </div>
+                      <div className="glass p-4 rounded-lg border border-purple-500/30 w-full bg-gradient-to-br from-purple-500/5 via-transparent to-transparent">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Resolver Fee</span>
+                            <span className="text-2xl font-bold text-purple-400">
+                              {(market.totalVolume * 0.0005).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground/70">0.05% of total volume</div>
+                        </div>
+                      </div>
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Ended</span>
+                          <span className="text-xs font-mono text-foreground">
+                            {new Date(market.endDate).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <Button className="w-full h-11 text-sm font-bold bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/20">
+                        Connect Wallet to Resolve
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!isAuthorized && isLocked && !canResolve && (
+                <Card className="glass border-2 border-border/50">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-purple-500/10 border-2 border-purple-500/30">
+                        <Lock className="w-8 h-8 text-purple-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold">Market Locked</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market is currently locked and not accepting new bets. Connect your wallet to view more
+                          details and participate in future markets.
+                        </p>
+                      </div>
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Status</span>
+                          <Badge variant="outline" className="bg-purple-500/10 border-purple-500/30 text-purple-400">
+                            <Lock className="w-3 h-3 mr-1" />
+                            Locked
+                          </Badge>
+                        </div>
+                      </div>
+                      <Button className="w-full h-11 text-sm font-bold bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-lg shadow-purple-500/20">
+                        Connect Wallet
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isAuthorized && canResolve && (
+                <Card className="glass border-2 border-purple-500/30">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-gradient-to-br from-purple-500/20 to-purple-600/20 border-2 border-purple-500/40 shadow-lg shadow-purple-500/20">
+                        <Clock className="w-8 h-8 text-purple-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold gradient-text">Market Ended</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market has reached its end date and is ready to be resolved. Click the button below to
+                          resolve the market based on the oracle data.
+                        </p>
+                      </div>
+                      <div className="glass p-4 rounded-lg border border-purple-500/30 w-full bg-gradient-to-br from-purple-500/5 via-transparent to-transparent">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Resolver Fee</span>
+                            <span className="text-2xl font-bold text-purple-400">
+                              {(market.totalVolume * 0.0005).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground/70">You'll earn 0.05% of total volume</div>
+                        </div>
+                      </div>
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Ended</span>
+                          <span className="text-xs font-mono text-foreground">
+                            {new Date(market.endDate).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => dispatch(openStepper())}
+                        className="w-full h-11 text-sm font-bold cursor-pointer bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/20"
+                      >
+                        Resolve Market
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isAuthorized && isLocked && !canResolve && (
+                <Card className="glass border-2 border-border/50">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                      <div className="p-4 rounded-full bg-purple-500/10 border-2 border-purple-500/30">
+                        <Lock className="w-8 h-8 text-purple-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold">Market Locked</h3>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          This market is currently locked and not accepting new bets. The market will be resolved soon
+                          based on the outcome.
+                        </p>
+                      </div>
+                      <div className="glass p-3 rounded-lg border border-border/40 w-full">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Status</span>
+                          <Badge variant="outline" className="bg-purple-500/10 border-purple-500/30 text-purple-400">
+                            <Lock className="w-3 h-3 mr-1" />
+                            Locked
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isAuthorized && market.status === "open" && !canResolve && (
+                <Card className="glass border-2 border-border/50">
+                  <CardHeader className="pb-3 border-b border-border/30 bg-gradient-to-br from-purple-500/5 via-transparent to-transparent">
+                    <CardTitle className="flex items-center justify-between text-lg">
+                      <span className="font-bold">Place Your Bet</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Balance:</span>
+                        <span className="font-semibold text-foreground">{numericBalance.toFixed(2)} USDC</span>
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                        Select Side
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "h-12 font-semibold cursor-pointer transition-all duration-200 border-2",
+                            selectedSide === "yes"
+                              ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 shadow-sm"
+                              : "glass hover:border-emerald-500/30",
+                          )}
+                          onClick={() => setSelectedSide(selectedSide === "yes" ? null : "yes")}
+                        >
+                          YES
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "h-12 font-semibold cursor-pointer transition-all duration-200 border-2",
+                            selectedSide === "no"
+                              ? "border-rose-500/50 bg-rose-500/10 text-rose-400 shadow-sm"
+                              : "glass hover:border-rose-500/30",
+                          )}
+                          onClick={() => setSelectedSide(selectedSide === "no" ? null : "no")}
+                        >
+                          NO
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="bet-amount"
+                          className="text-xs text-muted-foreground uppercase tracking-wider font-semibold"
+                        >
+                          Amount (USDC)
+                        </Label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setBetAmount(numericBalance.toFixed(2))}
+                          className="text-xs text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 h-6 px-2 cursor-pointer"
+                        >
+                          MAX
+                        </Button>
+                      </div>
+
+                      <Input
+                        id="bet-amount"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={betAmount}
+                        onChange={(e) => setBetAmount(e.target.value)}
+                        className="glass text-2xl h-14 text-center font-bold border-2 focus:border-purple-500/50"
+                        min="0"
+                        max={numericBalance}
+                        step="0.01"
+                        onBlur={handleBlur}
+                      />
+
+                      <div className="grid grid-cols-4 gap-2">
+                        {quickAmounts.map((amount) => (
+                          <Button
+                            key={amount}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleQuickAmount(amount)}
+                            className="glass cursor-pointer hover:bg-purple-500/10 hover:border-purple-500/50 h-9 font-medium text-sm"
+                            disabled={amount > numericBalance}
+                          >
+                            {amount}
+                          </Button>
+                        ))}
+                      </div>
+
+                      {betAmount && Number.parseFloat(betAmount) > numericBalance && (
+                        <div className="flex items-center space-x-2 text-red-400 text-xs bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Insufficient balance</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedSide && betAmount && payout && Number.parseFloat(betAmount) <= numericBalance && (
+                      <div className="glass p-4 rounded-lg space-y-3 border border-border/40">
+                        <div className="flex items-center justify-between pb-2 border-b border-border/30">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Order Summary
+                          </span>
+                          <Badge
+                            className={cn(
+                              "text-xs font-bold",
+                              selectedSide === "yes"
+                                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                : "bg-rose-500/20 text-rose-400 border-rose-500/30",
+                            )}
+                          >
+                            {selectedSide.toUpperCase()}
+                          </Badge>
+                        </div>
+
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground">Shares</span>
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip_>
+                                  <TooltipTrigger asChild>
+                                    <Info className="w-3.5 h-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    sideOffset={5}
+                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                  >
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-semibold">Formula:</p>
+                                      <p className="text-xs font-mono">shares ≈ Amount / Price</p>
+                                      <p className="text-xs text-muted-foreground mt-2">
+                                        {betAmount} /{" "}
+                                        {(selectedSide === "yes" ? market.yesPrice : market.noPrice).toFixed(2)} ={" "}
+                                        {payout.shares.toFixed(2)}
+                                      </p>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip_>
+                              </TooltipProvider>
+                            </div>
+                            <span className="font-semibold">{payout.shares.toFixed(2)}</span>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Price</span>
                             <span className="font-semibold">
                               {selectedSide === "yes"
                                 ? (market.yesPrice * 100).toFixed(0)
@@ -596,355 +1012,94 @@ export default function MarketPage() {
                               ¢
                             </span>
                           </div>
-                        </div>
 
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Shares:</span>
-                            <span className="font-semibold">{payout.shares.toFixed(2)}</span>
+                          <div className="h-px bg-border/50 my-1"></div>
+
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground">Max Payout</span>
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip_>
+                                  <TooltipTrigger asChild>
+                                    <Info className="w-3.5 h-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    sideOffset={5}
+                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                  >
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-semibold">Formula:</p>
+                                      <p className="text-xs font-mono">max_payout = shares × 1 USDC</p>
+                                      <p className="text-xs text-muted-foreground mt-2">
+                                        {payout.shares.toFixed(2)} × 1 = {payout.potentialPayout.toFixed(2)} USDC
+                                      </p>
+                                      <p className="text-xs text-muted-foreground/70 mt-2">
+                                        If your side wins, each share pays out 1 USDC
+                                      </p>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip_>
+                              </TooltipProvider>
+                            </div>
+                            <span className="font-bold text-green-400">{payout.potentialPayout.toFixed(2)} USDC</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Max Payout:</span>
-                            <span className="font-semibold text-green-400">
-                              {payout.potentialPayout.toFixed(2)} SOL
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Max Profit:</span>
-                            <span className="font-semibold gradient-text">+{payout.profit.toFixed(2)} SOL</span>
+
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground">Profit</span>
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip_>
+                                  <TooltipTrigger asChild>
+                                    <Info className="w-3.5 h-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    sideOffset={5}
+                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                  >
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-semibold">Formula:</p>
+                                      <p className="text-xs font-mono">profit = max_payout - Amount</p>
+                                      <p className="text-xs text-muted-foreground mt-2">
+                                        {payout.potentialPayout.toFixed(2)} - {betAmount} = {payout.profit.toFixed(2)}{" "}
+                                        USDC
+                                      </p>
+                                      <p className="text-xs text-muted-foreground/70 mt-2">
+                                        Your gross profit if you win
+                                      </p>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip_>
+                              </TooltipProvider>
+                            </div>
+                            <span className="font-bold text-purple-400">+{payout.profit.toFixed(2)} USDC</span>
                           </div>
                         </div>
                       </div>
-
-                      {priceImpact > 0.05 && (
-                        <div className="flex items-center space-x-2 text-yellow-400 text-sm bg-yellow-400/10 p-3 rounded-lg">
-                          <AlertTriangle className="w-4 h-4" />
-                          <span>High price impact: {(priceImpact * 100).toFixed(1)}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <CustomButton
-                    onClick={handleBet}
-                    disabled={!canPlace}
-                    variant="expandIcon"
-                    Icon={ArrowRight}
-                    iconPlacement="right"
-                    className={cn(
-                      "h-fit w-full h-14 cursor-pointer rounded-lg bg-accent text-foreground hover:bg-accent/95",
                     )}
-                  >
-                     {isPlacingBet ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span>Placing Bet...</span>
+
+                    {/* {priceImpact > 0.05 && (
+                      <div className="flex items-center space-x-2 text-yellow-400 text-xs bg-yellow-400/10 p-2.5 rounded-lg border border-yellow-500/20">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>High price impact: {(priceImpact * 100).toFixed(1)}%</span>
                       </div>
-                    ) : (
-                      <>
-                        <DollarSign className="w-5 h-5 mr-2" />
-                        Place Bet
-                      </>
-                    )}
-                  </CustomButton>
-                </CardContent>
-              </Card>
-            )}
+                    )} */}
 
-            <Card className="glass glow relative overflow-hidden">
-              <CardHeader className="relative z-10">
-                <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-5 h-5 text-primary" />
-                    <span>Prediction Trends Over Time</span>
-                  </div>
-                  <Badge variant="outline" className="glass text-xs">
-                    <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-                    Live Data
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="space-y-6">
-                  <div className="flex items-center justify-center space-x-8">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 bg-cyan-500 rounded-full"></div>
-                      <span className="text-sm font-medium text-muted-foreground">AI Prediction</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                      <span className="text-sm font-medium text-muted-foreground">Community Sentiment</span>
-                    </div>
-                  </div>
+                    <Button
+                      onClick={handleBet}
+                      disabled={!canPlace}
+                      className="w-full h-11 text-sm font-bold cursor-pointer bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/20"
+                    >
+                      {isPlacingBet ? "Placing Bet..." : "Place Bet"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-                  <div className="h-80 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={predictionHistory} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                        <defs>
-                          <linearGradient id="aiGradient" x1="0" y1="0" x2="0" y2="1" gradientUnits="userSpaceOnUse">
-                            <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.35} />
-                            <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.05} />
-                          </linearGradient>
-                          <linearGradient id="communityGradient" x1="0" y1="0" x2="0" y2="1" gradientUnits="userSpaceOnUse">
-                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-                            <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
-                          </linearGradient>
-                        </defs>
-
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" horizontal vertical={false} />
-
-                        <XAxis
-                          type="number"
-                          dataKey="ts"
-                          scale="time"
-                          domain={["dataMin", "dataMax"]}
-                          tickFormatter={(v) => df.format(new Date(v))}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: "rgb(148,163,184)", fontSize: 12 }}
-                          dy={10}
-                        />
-
-                        <YAxis
-                          domain={[40, 90]}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: "rgb(148,163,184)", fontSize: 12 }}
-                          tickFormatter={(value) => `${value}%`}
-                        />
-
-                        <Tooltip content={<CustomTooltip />} />
-
-                        <Area
-                          type="monotone"
-                          dataKey="ai"
-                          stroke="#06b6d4"
-                          strokeWidth={2.5}
-                          fill="url(#aiGradient)"
-                          fillOpacity={1}
-                          baseValue="dataMin"
-                          isAnimationActive={true}     
-                          dot={{ fill: "#06b6d4", stroke: "#0891b2", strokeWidth: 2, r: 4 }}
-                          activeDot={{ r: 6, fill: "#06b6d4", stroke: "#0891b2", strokeWidth: 2 }}
-                        />
-
-                        <Area
-                          type="monotone"
-                          dataKey="community"
-                          stroke="#10b981"
-                          strokeWidth={2.5}
-                          fill="url(#communityGradient)"
-                          fillOpacity={1}
-                          baseValue="dataMin"
-                          isAnimationActive={true}
-                          dot={{ fill: "#10b981", stroke: "#059669", strokeWidth: 2, r: 4 }}
-                          activeDot={{ r: 6, fill: "#10b981", stroke: "#059669", strokeWidth: 2 }}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="glass p-4 rounded-lg text-center">
-                      <div className="text-lg font-semibold text-cyan-500 mb-1">+22%</div>
-                      <div className="text-xs text-muted-foreground">AI Confidence Growth</div>
-                    </div>
-                    <div className="glass p-4 rounded-lg text-center">
-                      <div className="text-lg font-semibold text-emerald-500 mb-1">+30%</div>
-                      <div className="text-xs text-muted-foreground">Community Growth</div>
-                    </div>
-                    <div className="glass p-4 rounded-lg text-center">
-                      <div className="text-lg font-semibold text-slate-400 mb-1">15%</div>
-                      <div className="text-xs text-muted-foreground">Sentiment Gap</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-6">
-            <Card className="glass glow">
-              <CardHeader>
-                <CardTitle>Market Insights</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="stats" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 glass">
-                    <TabsTrigger value="stats" className="flex items-center space-x-1 cursor-pointer">
-                      <BarChart3 className="w-4 h-4" />
-                      <span>Stats</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="ai" className="flex items-center space-x-1 cursor-pointer">
-                      <Bot className="w-4 h-4" />
-                      <span>AI</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="community" className="flex items-center space-x-1 cursor-pointer">
-                      <Users className="w-4 h-4" />
-                      <span>Community</span>
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="stats" className="space-y-4 mt-4">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Volume</span>
-                      <span className="font-semibold">${fmtCompact(market.totalVolume)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Participants</span>
-                      <span className="font-semibold flex items-center">
-                        <Users className="w-4 h-4 mr-1" />
-                        {new Intl.NumberFormat('en-US').format(market.participants)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Liquidity</span>
-                      <span className="font-semibold flex items-center">
-                        <Droplets className="w-4 h-4 mr-1" />
-                        ${fmtCompact(market.liquidity)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Creator</span>
-                      <TooltipProvider delayDuration={100}>
-                        <Tooltip_>
-                           <TooltipTrigger asChild>
-                            <span className="font-mono text-sm cursor-pointer hover:underline">
-                              {market.creator.length > 10
-                                ? `${market.creator.slice(0, 10)}...${market.creator.slice(-10)}`
-                                : market.creator}
-                            </span>
-                           </TooltipTrigger>
-                           <TooltipContent className="p-2 bg-card border border-border">
-                              <div className="flex flex-col gap-2 min-w-[200px]">
-                                <div className="flex gap-2">
-                                  <Button variant="outline" size="sm" onClick={() => {navigator.clipboard.writeText(market.creator); setCopied(true); setTimeout(() => setCopied(false), 2000)}} className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent">
-                                    {copied ? (
-                                      <>
-                                        <Check className="w-3 h-3 mr-1" />
-                                        Copied
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Copy className="w-3 h-3 mr-1" />
-                                        Copy
-                                      </>
-                                    )}
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => router.push(`/profile/${market.creator}`)} className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent">
-                                    <User className="w-3 h-3 mr-1" />
-                                    Profile
-                                  </Button>
-                                </div>
-                              </div>
-                            </TooltipContent>
-                        </Tooltip_>
-                      </TooltipProvider>
-
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="ai" className="space-y-4 mt-4">
-                    <div className="text-center space-y-3">
-                      <div className="text-3xl font-bold gradient-text">67%</div>
-                      <div className="text-sm text-muted-foreground">Confidence: YES</div>
-                      <div className="glass p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">
-                          AI analysis based on historical Bitcoin patterns, market cycles, and adoption trends suggests
-                          strong probability of reaching $100K.
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-center space-x-2 text-xs text-muted-foreground">
-                        <Activity className="w-3 h-3" />
-                        <span>Updated 2 hours ago</span>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="community" className="space-y-4 mt-4">
-                    <div className="space-y-4">
-                      <div className="text-center">
-                        <div className="text-3xl font-bold gradient-text">82%</div>
-                        <div className="text-sm text-muted-foreground">Bullish Sentiment</div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-green-400">Bullish (Yes)</span>
-                          <span>82%</span>
-                        </div>
-                        <div className="w-full bg-muted/20 rounded-full h-2">
-                          <div className="bg-green-400 h-2 rounded-full" style={{ width: "82%" }}></div>
-                        </div>
-
-                        <div className="flex justify-between text-sm">
-                          <span className="text-red-400">Bearish (No)</span>
-                          <span>18%</span>
-                        </div>
-                        <div className="w-full bg-muted/20 rounded-full h-2">
-                          <div className="bg-red-400 h-2 rounded-full" style={{ width: "18%" }}></div>
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-
-            <Card className="glass glow-cyan">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Bot className="w-5 h-5 text-cyan-400" />
-                  <span>AI vs Humans</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center space-y-2">
-                    <div className="flex items-center justify-center space-x-2">
-                      <Bot className="w-4 h-4 text-cyan-400" />
-                      <span className="text-sm font-medium">AI Prediction</span>
-                    </div>
-                    <div className="text-2xl font-bold text-cyan-400">67%</div>
-                    <div className="text-xs text-muted-foreground">YES</div>
-                  </div>
-
-                  <div className="text-center space-y-2">
-                    <div className="flex items-center justify-center space-x-2">
-                      <Users className="w-4 h-4 text-green-400" />
-                      <span className="text-sm font-medium">Community</span>
-                    </div>
-                    <div className="text-2xl font-bold text-green-400">82%</div>
-                    <div className="text-xs text-muted-foreground">YES</div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Prediction Alignment</span>
-                    <span className="text-green-400 font-medium">+15% more bullish</span>
-                  </div>
-
-                  <div className="relative">
-                    <div className="flex space-x-1 h-8 rounded-lg overflow-hidden bg-muted/20">
-                      <div className="bg-cyan-400/80 flex-1 flex items-center justify-center text-xs font-medium text-white">
-                        AI: 67%
-                      </div>
-                      <div className="bg-green-400/80 flex-1 flex items-center justify-center text-xs font-medium text-white">
-                        Humans: 82%
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="glass p-3 rounded-lg">
-                    <p className="text-xs text-muted-foreground">
-                      Community sentiment is slightly more optimistic than AI analysis, suggesting strong retail
-                      confidence in Bitcoin's potential.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              <RecentBets marketPda={market_pda} />
+              <ResolutionStepper onStartResolving={handleResolve} />
+            </div>
           </div>
         </div>
       </div>

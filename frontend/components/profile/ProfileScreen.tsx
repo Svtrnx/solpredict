@@ -25,9 +25,9 @@ import { getAchievements, type Achievement } from "@/lib/achievements-data";
 
 export type PublicProfile = {
   address: string;
-  totalVolume: string;
+  totalVolume: number;
   winRate: number;
-  winRateChange: string;
+  winRateChange: number;
   rankChange: number;
   totalBets: number;
   activeBets: number;
@@ -36,6 +36,8 @@ export type PublicProfile = {
   points: number;
   streak: number;
   joinDate: string;
+  displayAddress?: string;
+  wallet?: string;
 };
 
 export type PrivateOverview = PublicProfile & {
@@ -287,7 +289,7 @@ export default function ProfileScreen({
                 <div>No bets yet</div>
               ) : (
                 <>
-                  <ActiveBetsTab activeBets={sortedActiveBets} />
+                  <ActiveBetsTab activeBets={sortedActiveBets} isOwner={isOwner} />
                   <LoadMoreButton query={activeQ} />
                 </>
               )}

@@ -298,22 +298,21 @@ pub async fn get_wallet_overview_by_address(
         tier_label: Option<String>,
     }
 
-    // Using CTE: fetch wallet id by address and join tier
     let base: BaseRow = sqlx::query_as::<_, BaseRow>(
-        r#"
-        WITH wid AS (
-          SELECT id, created_at, points_total
-          FROM wallets
-          WHERE wallet_address = $1
-        )
-        SELECT
-          w.created_at,
-          w.points_total,
-          COALESCE(t.tier, 'Observer') AS tier_label,
-          w.id AS wallet_id
-        FROM wid w
-        LEFT JOIN wallet_tiers t ON t.id = w.id
-        "#,
+      r#"
+      SELECT
+        w.created_at,
+        w.points_total,
+        CASE
+          WHEN w.points_total >= 15000 THEN 'Singularity'
+          WHEN w.points_total >= 10000 THEN 'Oracle'
+          WHEN w.points_total >=  5000 THEN 'Prophet'
+          WHEN w.points_total >=  1000 THEN 'Forecaster'
+          ELSE 'Observer'
+        END AS tier_label
+      FROM wallets w
+      WHERE w.wallet_address = $1
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -329,12 +328,12 @@ pub async fn get_wallet_overview_by_address(
     }
 
     let vol: VolRow = sqlx::query_as(
-        r#"
-        SELECT COALESCE(SUM(amount_1e6), 0)::BIGINT AS total,
-               COUNT(*)::BIGINT AS cnt
-        FROM market_bets
-        WHERE user_pubkey = $1
-        "#,
+      r#"
+      SELECT COALESCE(SUM(amount_1e6), 0)::BIGINT AS total,
+              COUNT(*)::BIGINT AS cnt
+      FROM market_bets
+      WHERE user_pubkey = $1
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -342,14 +341,14 @@ pub async fn get_wallet_overview_by_address(
 
     // Active bets (by address)
     let active_bets: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)::BIGINT
-        FROM market_positions mp
-        JOIN market_state ms ON ms.market_id = mp.market_id
-        WHERE mp.user_pubkey = $1
-          AND ms.settled = FALSE
-          AND (mp.yes_bet_1e6 > 0 OR mp.no_bet_1e6 > 0)
-        "#,
+      r#"
+      SELECT COUNT(*)::BIGINT
+      FROM market_positions mp
+      JOIN market_state ms ON ms.market_id = mp.market_id
+      WHERE mp.user_pubkey = $1
+        AND ms.settled = FALSE
+        AND (mp.yes_bet_1e6 > 0 OR mp.no_bet_1e6 > 0)
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -363,22 +362,22 @@ pub async fn get_wallet_overview_by_address(
     }
 
     let win_all: WinRow = sqlx::query_as(
-        r#"
-        SELECT
-          SUM(
-            CASE
-              WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
-                OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
-              THEN 1 ELSE 0
-            END
-          )::BIGINT AS wins,
-          COUNT(*)::BIGINT AS total
-        FROM market_positions mp
-        JOIN market_state ms ON ms.market_id = mp.market_id
-        WHERE mp.user_pubkey = $1
-          AND ms.settled = TRUE
-          AND ms.winning_side IN (1,2)
-        "#,
+      r#"
+      SELECT
+        SUM(
+          CASE
+            WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+              OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+            THEN 1 ELSE 0
+          END
+        )::BIGINT AS wins,
+        COUNT(*)::BIGINT AS total
+      FROM market_positions mp
+      JOIN market_state ms ON ms.market_id = mp.market_id
+      WHERE mp.user_pubkey = $1
+        AND ms.settled = TRUE
+        AND ms.winning_side IN (1,2)
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -392,47 +391,47 @@ pub async fn get_wallet_overview_by_address(
 
     // Win-rate (Delta) for the last 7d (by address)
     let win_last7: WinRow = sqlx::query_as(
-        r#"
-        SELECT
-          SUM(
-            CASE
-              WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
-                OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
-              THEN 1 ELSE 0
-            END
-          )::BIGINT AS wins,
-          COUNT(*)::BIGINT AS total
-        FROM market_positions mp
-        JOIN market_state ms ON ms.market_id = mp.market_id
-        WHERE mp.user_pubkey = $1
-          AND ms.settled = TRUE
-          AND ms.winning_side IN (1,2)
-          AND ms.updated_at >= now() - interval '7 days'
-        "#,
+      r#"
+      SELECT
+        SUM(
+          CASE
+            WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+              OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+            THEN 1 ELSE 0
+          END
+        )::BIGINT AS wins,
+        COUNT(*)::BIGINT AS total
+      FROM market_positions mp
+      JOIN market_state ms ON ms.market_id = mp.market_id
+      WHERE mp.user_pubkey = $1
+        AND ms.settled = TRUE
+        AND ms.winning_side IN (1,2)
+        AND ms.updated_at >= now() - interval '7 days'
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
     .await?;
 
     let win_prev7: WinRow = sqlx::query_as(
-        r#"
-        SELECT
-          SUM(
-            CASE
-              WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
-                OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
-              THEN 1 ELSE 0
-            END
-          )::BIGINT AS wins,
-          COUNT(*)::BIGINT AS total
-        FROM market_positions mp
-        JOIN market_state ms ON ms.market_id = mp.market_id
-        WHERE mp.user_pubkey = $1
-          AND ms.settled = TRUE
-          AND ms.winning_side IN (1,2)
-          AND ms.updated_at >= now() - interval '14 days'
-          AND ms.updated_at <  now() - interval '7 days'
-        "#,
+      r#"
+      SELECT
+        SUM(
+          CASE
+            WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+              OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+            THEN 1 ELSE 0
+          END
+        )::BIGINT AS wins,
+        COUNT(*)::BIGINT AS total
+      FROM market_positions mp
+      JOIN market_state ms ON ms.market_id = mp.market_id
+      WHERE mp.user_pubkey = $1
+        AND ms.settled = TRUE
+        AND ms.winning_side IN (1,2)
+        AND ms.updated_at >= now() - interval '14 days'
+        AND ms.updated_at <  now() - interval '7 days'
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -450,18 +449,18 @@ pub async fn get_wallet_overview_by_address(
     };
     let win_rate_change = wr_7 - wr_p7;
 
-    // Rank by points_total (id from CTE)
+    // Rank by points_total
     let rank: i64 = sqlx::query_scalar(
-        r#"
-        WITH wid AS (
-          SELECT id FROM wallets WHERE wallet_address = $1
-        ),
-        ranked AS (
-          SELECT id, DENSE_RANK() OVER (ORDER BY points_total DESC) AS r
-          FROM wallets
-        )
-        SELECT r FROM ranked WHERE id = (SELECT id FROM wid)
-        "#,
+      r#"
+      WITH wid AS (
+        SELECT id FROM wallets WHERE wallet_address = $1
+      ),
+      ranked AS (
+        SELECT id, DENSE_RANK() OVER (ORDER BY points_total DESC) AS r
+        FROM wallets
+      )
+      SELECT r FROM ranked WHERE id = (SELECT id FROM wid)
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -475,29 +474,29 @@ pub async fn get_wallet_overview_by_address(
     }
 
     let rd: RankDelta = sqlx::query_as(
-        r#"
-        WITH wid AS (SELECT id FROM wallets WHERE wallet_address = $1),
-        p AS (
-          SELECT w.id AS wallet_id,
-                 COALESCE(SUM(CASE WHEN pe.created_at >= now() - interval '7 days'
-                                   THEN pe.points_delta END), 0) AS pts_7d,
-                 COALESCE(SUM(CASE WHEN pe.created_at >= now() - interval '14 days'
-                                    AND pe.created_at <  now() - interval '7 days'
-                                   THEN pe.points_delta END), 0) AS pts_prev_7d
-          FROM wallets w
-          LEFT JOIN points_events pe ON pe.wallet_id = w.id
-          GROUP BY w.id
-        ),
-        r AS (
-          SELECT wallet_id,
-                 DENSE_RANK() OVER (ORDER BY pts_7d DESC)      AS rank_7d,
-                 DENSE_RANK() OVER (ORDER BY pts_prev_7d DESC) AS rank_prev_7d
-          FROM p
-        )
-        SELECT r.rank_7d, r.rank_prev_7d
-        FROM r
-        WHERE r.wallet_id = (SELECT id FROM wid)
-        "#,
+      r#"
+      WITH wid AS (SELECT id FROM wallets WHERE wallet_address = $1),
+      p AS (
+        SELECT w.id AS wallet_id,
+                COALESCE(SUM(CASE WHEN pe.created_at >= now() - interval '7 days'
+                                  THEN pe.points_delta END), 0) AS pts_7d,
+                COALESCE(SUM(CASE WHEN pe.created_at >= now() - interval '14 days'
+                                  AND pe.created_at <  now() - interval '7 days'
+                                  THEN pe.points_delta END), 0) AS pts_prev_7d
+        FROM wallets w
+        LEFT JOIN points_events pe ON pe.wallet_id = w.id
+        GROUP BY w.id
+      ),
+      r AS (
+        SELECT wallet_id,
+                DENSE_RANK() OVER (ORDER BY pts_7d DESC)      AS rank_7d,
+                DENSE_RANK() OVER (ORDER BY pts_prev_7d DESC) AS rank_prev_7d
+        FROM p
+      )
+      SELECT r.rank_7d, r.rank_prev_7d
+      FROM r
+      WHERE r.wallet_id = (SELECT id FROM wid)
+      "#,
     )
     .bind(wallet_address)
     .fetch_one(pool)
@@ -512,19 +511,19 @@ pub async fn get_wallet_overview_by_address(
     }
 
     let outcomes: Vec<Outcome> = sqlx::query_as(
-        r#"
-        SELECT
-          CASE
-            WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
-              OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
-            THEN TRUE ELSE FALSE END AS won
-        FROM market_positions mp
-        JOIN market_state ms ON ms.market_id = mp.market_id
-        WHERE mp.user_pubkey = $1
-          AND ms.settled = TRUE
-          AND ms.winning_side IN (1,2)
-        ORDER BY ms.updated_at
-        "#,
+      r#"
+      SELECT
+        CASE
+          WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+            OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+          THEN TRUE ELSE FALSE END AS won
+      FROM market_positions mp
+      JOIN market_state ms ON ms.market_id = mp.market_id
+      WHERE mp.user_pubkey = $1
+        AND ms.settled = TRUE
+        AND ms.winning_side IN (1,2)
+      ORDER BY ms.updated_at
+      "#,
     )
     .bind(wallet_address)
     .fetch_all(pool)

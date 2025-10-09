@@ -336,7 +336,7 @@ pub mod prediction_market {
         }
 
         // Pyth: read price with a small grace window after end_ts
-        let max_age_i64 = (now - m.end_ts) + 600; // allow a small“catch up period
+        let max_age_i64 = (now - m.end_ts) + 300; // allow a small“catch up period
         let max_age: u64 = max_age_i64.try_into().unwrap_or(u64::MAX);
 
         let price = ctx
@@ -1006,7 +1006,7 @@ impl AirdropClaim {
     pub const SIZE: usize = 1 + 8;
 }
 
-pub const AIRDROP_AMOUNT: u64 = 1_000 * 1_000_000;
+pub const AIRDROP_AMOUNT: u64 = 3_000 * 1_000_000;
 
 #[derive(Accounts)]
 pub struct AirdropOnce<'info> {

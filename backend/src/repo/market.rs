@@ -33,6 +33,7 @@ pub struct MarketRow {
     pub market_pda: String,
     pub creator: String,
     pub category: String,
+    pub feed_id: String,
     pub symbol: String,
     pub end_date_utc: chrono::DateTime<chrono::Utc>,
 
@@ -368,6 +369,7 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
             creator                     AS "creator!",
             category                    AS "category!",
             symbol                      AS "symbol!",
+            feed_id                     AS "feed_id!",
             end_date_utc                AS "end_date_utc!: chrono::DateTime<chrono::Utc>",
 
             market_type                 AS "market_type!",

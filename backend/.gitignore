@@ -2,7 +2,7 @@
 /migrations
 **/*.rs.bk
 
-.sqlx/*
+.sqlx/
 .vscode/
 *.code-workspace
 

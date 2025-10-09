@@ -126,140 +126,207 @@ pub async fn fetch_leaderboard_users(
     let (start_ts, end_ts, prev_start_ts, prev_end_ts) = match period {
         LeaderboardPeriod::AllTime => (None, None, None, None),
         LeaderboardPeriod::Monthly => {
-            let start = now - Duration::days(30);
+            let start = now - time::Duration::days(30);
             let prev_end = start;
-            let prev_start = prev_end - Duration::days(30);
+            let prev_start = prev_end - time::Duration::days(30);
             (Some(start), Some(now), Some(prev_start), Some(prev_end))
         }
         LeaderboardPeriod::Weekly => {
-            let start = now - Duration::days(7);
+            let start = now - time::Duration::days(7);
             let prev_end = start;
-            let prev_start = prev_end - Duration::days(7);
+            let prev_start = prev_end - time::Duration::days(7);
             (Some(start), Some(now), Some(prev_start), Some(prev_end))
         }
     };
 
     let rows = sqlx::query!(
         r#"
-            WITH params AS (
-            SELECT
-                $1::timestamptz  AS start_ts,
-                $2::timestamptz  AS end_ts,
-                $3::timestamptz  AS prev_start_ts,
-                $4::timestamptz  AS prev_end_ts
-            ),
-            curr AS (
-            SELECT
-                w.wallet_address                       AS address,
-                COUNT(b.id)::bigint                    AS total_bets,
-                COALESCE(SUM(b.amount_1e6), 0)::bigint AS volume_1e6,
-                SUM(
-                CASE
-                    WHEN ms.settled
-                    AND (
-                        (ms.winning_side = 1 AND b.side = 'yes') OR
-                        (ms.winning_side = 2 AND b.side = 'no')
-                    )
-                    THEN 1 ELSE 0
-                END
-                )::bigint AS wins,
-                w.points_total::bigint                 AS points_total,
-                CASE
-                WHEN w.points_total >= 15000 THEN 'Singularity'
-                WHEN w.points_total >= 10000 THEN 'Oracle'
-                WHEN w.points_total >=  5000 THEN 'Prophet'
-                WHEN w.points_total >=  1000 THEN 'Forecaster'
-                ELSE 'Observer'
-                END AS level
-            FROM wallets w
-            JOIN market_bets b   ON b.user_pubkey = w.wallet_address
-            JOIN markets m       ON m.id = b.market_id
-            JOIN market_state ms ON ms.market_id = m.id
-            CROSS JOIN params p
-            WHERE (p.start_ts IS NULL OR b.created_at >= p.start_ts)
-                AND (p.end_ts   IS NULL OR b.created_at <  p.end_ts)
-            GROUP BY w.wallet_address, w.points_total
-            ),
-            ranked AS (
-            SELECT
-                address,
-                total_bets,
-                volume_1e6,
-                wins,
-                points_total,
-                level,
-                CASE
-                WHEN total_bets = 0 THEN 0::float8
-                ELSE ROUND((wins::numeric / total_bets::numeric) * 100.0, 1)::float8
-                END AS win_rate,
-                ROW_NUMBER() OVER (
-                ORDER BY points_total DESC,
-                        (CASE WHEN total_bets = 0 THEN 0 ELSE (wins::numeric / total_bets::numeric) END) DESC,
-                        volume_1e6 DESC,
-                        address ASC
-                )::bigint AS rnk
-            FROM curr
-            ),
-            prev_raw AS (
-            SELECT
-                w.wallet_address AS address,
-                COUNT(b.id)::bigint                    AS total_bets,
-                COALESCE(SUM(b.amount_1e6), 0)::bigint AS volume_1e6,
-                SUM(
-                CASE
-                    WHEN ms.settled
-                    AND (
-                        (ms.winning_side = 1 AND b.side = 'yes') OR
-                        (ms.winning_side = 2 AND b.side = 'no')
-                    )
-                    THEN 1 ELSE 0
-                END
-                )::bigint AS wins,
-                w.points_total::bigint AS points_total
-            FROM wallets w
-            JOIN market_bets b   ON b.user_pubkey = w.wallet_address
-            JOIN markets m       ON m.id = b.market_id
-            JOIN market_state ms ON ms.market_id = m.id
-            CROSS JOIN params p
-            WHERE p.prev_start_ts IS NOT NULL
-                AND b.created_at >= p.prev_start_ts
-                AND b.created_at <  p.prev_end_ts
-            GROUP BY w.wallet_address, w.points_total
-            ),
-            prev_ranked AS (
-            SELECT
-                address,
-                ROW_NUMBER() OVER (
-                ORDER BY points_total DESC,
-                        (CASE WHEN total_bets = 0 THEN 0 ELSE (wins::numeric / total_bets::numeric) END) DESC,
-                        volume_1e6 DESC,
-                        address ASC
-                )::bigint AS prev_rnk
-            FROM prev_raw
-            )
-            SELECT
-            COALESCE(r.rnk, 0)::bigint         AS rank,
-            pr.prev_rnk                        AS prev_rank,
-            COALESCE(r.address, '')            AS address,
-            COALESCE(r.win_rate, 0::float8)    AS win_rate,
-            COALESCE(r.total_bets, 0)::bigint  AS total_bets,
-            COALESCE(r.volume_1e6, 0)::bigint  AS volume_1e6,
-            COALESCE(r.level, 'Observer')      AS level,
-            COALESCE(r.points_total, 0)::bigint AS points_total,
-            COALESCE(
-                CASE
-                WHEN pr.prev_rnk IS NULL AND (SELECT prev_start_ts FROM params) IS NOT NULL THEN 'new'
-                WHEN pr.prev_rnk IS NULL THEN 'same'
-                WHEN pr.prev_rnk > r.rnk THEN 'up'
-                WHEN pr.prev_rnk < r.rnk THEN 'down'
-                ELSE 'same'
-                END,
-                'same'
-            ) AS change
-            FROM ranked r
-            LEFT JOIN prev_ranked pr USING (address)
-            ORDER BY r.rnk
-            LIMIT $5
+        WITH params AS (
+          SELECT
+            $1::timestamptz  AS start_ts,
+            $2::timestamptz  AS end_ts,
+            $3::timestamptz  AS prev_start_ts,
+            $4::timestamptz  AS prev_end_ts
+        ),
+        curr AS (
+          SELECT
+            w.wallet_address                       AS address,
+            COUNT(b.id)::bigint                    AS total_bets,
+            COALESCE(SUM(b.amount_1e6), 0)::bigint AS volume_1e6,
+            SUM(
+              CASE
+                WHEN ms.settled
+                 AND (
+                      (ms.winning_side = 1 AND b.side = 'yes') OR
+                      (ms.winning_side = 2 AND b.side = 'no')
+                 )
+                THEN 1 ELSE 0
+              END
+            )::bigint AS wins_bets_based,
+            w.points_total::bigint                 AS points_total,
+            CASE
+              WHEN w.points_total >= 15000 THEN 'Singularity'
+              WHEN w.points_total >= 10000 THEN 'Oracle'
+              WHEN w.points_total >=  5000 THEN 'Prophet'
+              WHEN w.points_total >=  1000 THEN 'Forecaster'
+              ELSE 'Observer'
+            END AS level
+          FROM wallets w
+          JOIN market_bets b   ON b.user_pubkey = w.wallet_address
+          JOIN markets m       ON m.id = b.market_id
+          JOIN market_state ms ON ms.market_id = m.id
+          CROSS JOIN params p
+          WHERE (p.start_ts IS NULL OR b.created_at >= p.start_ts)
+            AND (p.end_ts   IS NULL OR b.created_at <  p.end_ts)
+          GROUP BY w.wallet_address, w.points_total
+        ),
+
+        wr_all AS (
+          SELECT
+            mp.user_pubkey AS address,
+            SUM(
+              CASE
+                WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+                  OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+                THEN 1 ELSE 0
+              END
+            )::bigint AS wr_wins,
+            COUNT(*)::bigint AS wr_total
+          FROM market_positions mp
+          JOIN market_state ms ON ms.market_id = mp.market_id
+          WHERE ms.settled = TRUE
+            AND ms.winning_side IN (1,2)
+          GROUP BY mp.user_pubkey
+        ),
+        wr AS (
+          SELECT
+            address,
+            wr_wins,
+            wr_total,
+            CASE
+              WHEN wr_total = 0 THEN 0::float8
+              ELSE ROUND((wr_wins::numeric / wr_total::numeric) * 100.0, 1)::float8
+            END AS win_rate
+          FROM wr_all
+        ),
+
+        ranked AS (
+          SELECT
+            c.address,
+            c.total_bets,
+            c.volume_1e6,
+            c.wins_bets_based,
+            c.points_total,
+            c.level,
+            CASE
+              WHEN c.total_bets = 0 THEN 0::float8
+              ELSE (c.wins_bets_based::numeric / c.total_bets::numeric)
+            END AS bets_ratio,
+            ROW_NUMBER() OVER (
+              ORDER BY c.points_total DESC,
+                       (CASE WHEN c.total_bets = 0 THEN 0 ELSE (c.wins_bets_based::numeric / c.total_bets::numeric) END) DESC,
+                       c.volume_1e6 DESC,
+                       c.address ASC
+            )::bigint AS rnk
+          FROM curr c
+        ),
+
+        prev_raw AS (
+          SELECT
+            w.wallet_address AS address,
+            COUNT(b.id)::bigint                    AS total_bets,
+            COALESCE(SUM(b.amount_1e6), 0)::bigint AS volume_1e6,
+            SUM(
+              CASE
+                WHEN ms.settled
+                 AND (
+                      (ms.winning_side = 1 AND b.side = 'yes') OR
+                      (ms.winning_side = 2 AND b.side = 'no')
+                 )
+                THEN 1 ELSE 0
+              END
+            )::bigint AS wins_bets_based,
+            w.points_total::bigint AS points_total
+          FROM wallets w
+          JOIN market_bets b   ON b.user_pubkey = w.wallet_address
+          JOIN markets m       ON m.id = b.market_id
+          JOIN market_state ms ON ms.market_id = m.id
+          CROSS JOIN params p
+          WHERE p.prev_start_ts IS NOT NULL
+            AND b.created_at >= p.prev_start_ts
+            AND b.created_at <  p.prev_end_ts
+          GROUP BY w.wallet_address, w.points_total
+        ),
+        prev_ranked AS (
+          SELECT
+            address,
+            ROW_NUMBER() OVER (
+              ORDER BY points_total DESC,
+                       (CASE WHEN total_bets = 0 THEN 0 ELSE (wins_bets_based::numeric / total_bets::numeric) END) DESC,
+                       volume_1e6 DESC,
+                       address ASC
+            )::bigint AS prev_rnk
+          FROM prev_raw
+        ),
+
+        outcomes AS (
+          SELECT
+            mp.user_pubkey AS address,
+            ms.updated_at,
+            CASE
+              WHEN (ms.winning_side = 1 AND mp.yes_bet_1e6 > 0)
+                OR (ms.winning_side = 2 AND mp.no_bet_1e6 > 0)
+              THEN TRUE ELSE FALSE
+            END AS won
+          FROM market_positions mp
+          JOIN market_state ms ON ms.market_id = mp.market_id
+          WHERE ms.settled = TRUE
+            AND ms.winning_side IN (1,2)
+        ),
+        ordered AS (
+          SELECT
+            address,
+            won,
+            SUM(CASE WHEN won THEN 0 ELSE 1 END)
+              OVER (PARTITION BY address ORDER BY updated_at DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS loss_block
+          FROM outcomes
+        ),
+        streaks AS (
+          SELECT address, COUNT(*)::bigint AS streak
+          FROM ordered
+          WHERE loss_block = 0 AND won = TRUE
+          GROUP BY address
+        )
+
+        SELECT
+          COALESCE(r.rnk, 0)::bigint          AS rank,
+          pr.prev_rnk                          AS prev_rank,
+          COALESCE(r.address, '')              AS address,
+
+          COALESCE(wr.win_rate, 0::float8)     AS win_rate,
+
+          COALESCE(r.total_bets, 0)::bigint    AS total_bets,
+          COALESCE(r.volume_1e6, 0)::bigint    AS volume_1e6,
+          COALESCE(r.level, 'Observer')        AS level,
+          COALESCE(r.points_total, 0)::bigint  AS points_total,
+          COALESCE(
+            CASE
+              WHEN pr.prev_rnk IS NULL AND (SELECT prev_start_ts FROM params) IS NOT NULL THEN 'new'
+              WHEN pr.prev_rnk IS NULL THEN 'same'
+              WHEN pr.prev_rnk > r.rnk THEN 'up'
+              WHEN pr.prev_rnk < r.rnk THEN 'down'
+              ELSE 'same'
+            END,
+            'same'
+          ) AS change,
+          COALESCE(s.streak, 0)::bigint        AS streak
+        FROM ranked r
+        LEFT JOIN prev_ranked pr USING (address)
+        LEFT JOIN wr          ON wr.address = r.address
+        LEFT JOIN streaks s   ON s.address   = r.address
+        ORDER BY r.rnk
+        LIMIT $5
         "#,
         start_ts,
         end_ts,
@@ -279,7 +346,7 @@ pub async fn fetch_leaderboard_users(
             win_rate: row.win_rate.unwrap_or(0.0),
             total_bets: row.total_bets.unwrap_or(0) as i64,
             volume: (row.volume_1e6.unwrap_or(0) as f64) / 1_000_000.0,
-            streak: 0,
+            streak: row.streak.unwrap_or(0) as i64,
             level: row.level.unwrap_or_else(|| "Observer".to_string()),
             points: row.points_total.unwrap_or(0) as i64,
             change: row.change.unwrap_or_else(|| "same".to_string()),

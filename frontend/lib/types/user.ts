@@ -47,6 +47,7 @@ export interface LevelInfo {
 }
 
 export const LeaderboardPeriodSchema = z.enum(["all-time", "monthly", "weekly"]);
+
 export const LeaderboardChangeSchema = z.enum(["up", "down", "same", "new"]);
 
 export const LeaderboardItemSchema = z.object({
@@ -66,4 +67,8 @@ export const LeaderboardResponseSchema = z.object({
   period: LeaderboardPeriodSchema,
   items: z.array(LeaderboardItemSchema),
 });
+
+export type LeaderboardItem = z.infer<typeof LeaderboardItemSchema>;
+export type LeaderboardResponse = z.infer<typeof LeaderboardResponseSchema>;
+
 export type LeaderboardPeriod = z.infer<typeof LeaderboardPeriodSchema>;

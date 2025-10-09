@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::repo::{position as pos_repo, points as points_repo};
+use crate::repo::{points as points_repo, bets as bets_repo};
 
 pub async fn record_bet_and_points(
     pool: &PgPool,
@@ -11,12 +11,21 @@ pub async fn record_bet_and_points(
     amount_1e6: i64,
     tx_sig: &str,
 ) -> anyhow::Result<i64> {
-    pos_repo::apply_bet_to_position(
+    // pos_repo::apply_bet_to_position(
+    //     pool,
+    //     market_id,
+    //     user_wallet,
+    //     side_yes,
+    //     amount_1e6,
+    // )
+    bets_repo::insert_bet_and_upsert_position(
         pool,
         market_id,
         user_wallet,
         side_yes,
         amount_1e6,
+        tx_sig,
+        None
     )
     .await?;
 

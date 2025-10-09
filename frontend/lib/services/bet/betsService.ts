@@ -5,7 +5,9 @@ import {
 	BetsResponse, 
 	PrepareBetPayload, 
 	PrepareBetSchema, 
-	PrepareBetResponseSchema
+	PrepareBetResponseSchema,
+	RecentBetsResponseSchema,
+	type RecentBetsResponse
 } from "@/lib/types/bet";
 
 export async function fetchBets(params: {
@@ -37,12 +39,36 @@ export async function fetchBets(params: {
 }
 
 export async function prepareBet(p: PrepareBetPayload) {
-  const payload = PrepareBetSchema.parse(p);
+	const payload = PrepareBetSchema.parse(p);
 
-  const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/bets/tx`, payload, {
-    withCredentials: true,
-    headers: { "Content-Type": "application/json" },
-  });
+	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/bets/tx`, payload, {
+	withCredentials: true,
+	headers: { "Content-Type": "application/json" },
+	});
 
-  return PrepareBetResponseSchema.parse(data);
+	return PrepareBetResponseSchema.parse(data);
+}
+
+export async function fetchRecentBets(params: {
+	marketPda?: string;
+	address?: string;
+	limit?: number;
+	cursor?: number | null;
+	signal?: AbortSignal;
+}): Promise<RecentBetsResponse> {
+	const qs = new URLSearchParams();
+	
+	if (params.marketPda) qs.set("marketPda", params.marketPda);
+	if (params.address)   qs.set("address", params.address);
+	if (params.limit)     qs.set("limit", String(params.limit));
+	if (params.cursor != null) qs.set("cursor", String(params.cursor));
+
+	const url = `${process.env.NEXT_PUBLIC_API_URL}/markets/bets?${qs.toString()}`;
+
+	const { data } = await axios.get(url, {
+		withCredentials: true,
+		signal: params.signal,
+	});
+
+	return RecentBetsResponseSchema.parse(data);
 }

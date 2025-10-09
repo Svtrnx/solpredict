@@ -72,13 +72,15 @@ pub struct CreateMarketRequest {
 pub struct MarketDto {
     pub id: String,
     pub title: String,
-    pub description: String,
     pub yes_price: f64,
     pub no_price: f64,
     pub total_volume: f64,
+    pub yes_total_volume: f64,
+    pub no_total_volume: f64,
     pub participants: i32,
-    pub liquidity: f64,
     pub end_date: String,
+    pub symbol: String,
+    pub feed_id: String,
     pub category: String,
     pub creator: String,
     pub settler: Option<String>,
@@ -199,13 +201,8 @@ impl From<&MarketRow> for TitleSpec {
 // ========== Mapping Row -> DTO ==========
 impl From<MarketRow> for MarketDto {
     fn from(r: MarketRow) -> Self {
-        let yes = r
-            .price_yes_bp
-            .map(|bp| (bp as f64) / 10_000.0)
-            .unwrap_or(0.5);
+        let yes = r.price_yes_bp.map(|bp| (bp as f64) / 10_000.0).unwrap_or(0.5);
         let no = (1.0 - yes).max(0.0);
-
-        let pool_1e6 = r.initial_liquidity_1e6 + r.yes_total_1e6 + r.no_total_1e6;
 
         let status = match r.status.as_str() {
             "active" => MarketStatusDto::Open,
@@ -215,19 +212,22 @@ impl From<MarketRow> for MarketDto {
             _ => MarketStatusDto::Open,
         };
 
-        // Gen title
         let title = generate_title(&TitleSpec::from(&r));
-        let description = format!("Category: {}. PDA: {}.", r.category, r.market_pda);
 
         MarketDto {
             id: r.id.to_string(),
             title,
-            description,
             yes_price: round2(yes),
             no_price: round2(no),
+
+            yes_total_volume: (r.yes_total_1e6 as f64) / 1_000_000.0,
+            no_total_volume: (r.no_total_1e6 as f64) / 1_000_000.0,
+
             total_volume: (r.total_volume_1e6 as f64) / 1_000_000.0,
+
             participants: r.participants,
-            liquidity: (pool_1e6 as f64) / 1_000_000.0,
+            symbol: r.symbol,
+            feed_id: r.feed_id,
             end_date: r.end_date_utc.to_rfc3339(),
             category: r.category,
             creator: r.creator,

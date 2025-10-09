@@ -97,7 +97,7 @@ export function StatsCard({ stats }: StatsCardProps) {
                     {rankTrendText}
                   </span>
                 </div>
-                <div className="text-xs text-muted-foreground">Top 1% of predictors</div>
+                <div className="text-xs text-muted-foreground">Top of predictors</div>
               </div>
             </div>
 

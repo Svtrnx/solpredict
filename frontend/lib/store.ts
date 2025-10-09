@@ -1,9 +1,11 @@
-import { configureStore } from "@reduxjs/toolkit"
+import resolutionStepperReducer from "./features/resolutionStepperSlice"
 import walletReducer from "./features/wallet/walletSlice"
+import { configureStore } from "@reduxjs/toolkit"
 
 export const store = configureStore({
   reducer: {
     wallet: walletReducer,
+    resolutionStepper: resolutionStepperReducer
   },
 })
 

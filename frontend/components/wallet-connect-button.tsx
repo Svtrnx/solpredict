@@ -83,6 +83,8 @@ export function WalletConnectButton({ className = "" }) {
 
   const short4  = useShortAddress(publicKey, 4, 4);
   const short12 = useShortAddress(publicKey, 12, 12);
+  const publicKeyString = publicKey?.toString() ?? null;
+
 
   const waitingAutoConnect = !uiReady;
   const sessionReady =
@@ -226,7 +228,7 @@ export function WalletConnectButton({ className = "" }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <div className="px-3 py-2 text-xs opacity-70">{short12}</div>
+          <div onClick={() => navigator.clipboard.writeText(publicKeyString ? publicKeyString : "")} className="px-3 py-2 opacity-70 font-mono text-xs cursor-pointer hover:text-[#a9a9a9] transition-colors">{short12}</div>
 
           {!sessionReady && (
             <DropdownMenuItem onClick={handleSignIn}>
@@ -251,7 +253,7 @@ export function WalletConnectButton({ className = "" }) {
       disabled={connecting}
       variant="default"
       size="default"
-      className={`${className} bg-gradient-to-r from-purple-500/80 to-purple-600/80 hover:from-purple-500 hover:to-purple-600`}
+      className={`${className} cursor-pointer bg-gradient-to-r from-purple-500/80 to-purple-600/80 hover:from-purple-500 hover:to-purple-600`}
     >
       {connecting ? (
         <Loader2 className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4 animate-spin" />

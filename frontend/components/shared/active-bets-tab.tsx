@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, act } from "react"
 import Link from "next/link"
 
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -35,6 +35,7 @@ const RESOLVER_BPS = 5 // 0.05%
 
 type ActiveBetsTabProps = {
   activeBets: Bet[]
+  isOwner: boolean
 }
 
 function getBetUrgency(endDate?: string | null) {
@@ -135,7 +136,7 @@ function buildClaimInfo(bet: Bet) {
   }
 }
 
-export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
+export function ActiveBetsTab({ activeBets, isOwner }: ActiveBetsTabProps) {
   const wallet = useWallet()
   const connection = useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
 
@@ -508,7 +509,7 @@ export function ActiveBetsTab({ activeBets }: ActiveBetsTabProps) {
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {isSettledNeedingClaim && (
+                    {isSettledNeedingClaim && isOwner && (
                       <Button
                         style={{ width: 130 }}
                         size="lg"
