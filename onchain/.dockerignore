@@ -1,0 +1,31 @@
+
+.git
+.github
+.vscode
+.DS_Store
+**/*.log
+
+# node
+**/node_modules
+**/.next
+**/dist
+**/build
+
+# rust/anchor
+**/target
+**/*.so
+**/*.a
+**/*.rlib
+**/*.rmeta
+**/*.dSYM
+**/*.wasm
+**/*.o
+**/*.dll
+**/*.dylib
+**/*.exe
+**/*.pdb
+**/*.bc
+
+**/.anchor
+**/idl/*.json
+Anchor.toml

@@ -23,6 +23,16 @@ pub struct WalletOverview {
     pub join_date: String, // Join date (dd.mm.yyyy)
 }
 
+#[inline]
+fn tier_from_points(p: i64) -> &'static str {
+    if p >= 15_000 { "Singularity" }
+    else if p >= 10_000 { "Oracle" }
+    else if p >= 5_000  { "Prophet" }
+    else if p >= 1_000  { "Forecaster" }
+    else { "Observer" }
+}
+
+
 pub async fn get_wallet_overview(
     pool: &PgPool,
     wallet_id: Uuid,
@@ -33,20 +43,16 @@ pub async fn get_wallet_overview(
     struct WRow {
         created_at: chrono::DateTime<chrono::Utc>,
         points_total: i64,
-        tier_label: Option<String>,
     }
 
     let w: WRow = sqlx::query_as::<_, WRow>(
-        r#"
-    SELECT
+      r#"
+        SELECT
         w.created_at,
-        w.points_total,
-        COALESCE(v.tier, 'Observer') AS tier_label
-    FROM wallets w
-    LEFT JOIN wallet_tiers v
-           ON v.id = w.id          -- important: wallet_tiers.id == wallets.id
-    WHERE w.id = $1
-    "#,
+        w.points_total
+        FROM wallets w
+        WHERE w.id = $1
+      "#,
     )
     .bind(wallet_id) // UUID
     .fetch_one(pool)
@@ -110,7 +116,7 @@ pub async fn get_wallet_overview(
         JOIN market_state ms ON ms.market_id = mp.market_id
         WHERE mp.user_pubkey = $1
           AND ms.settled = TRUE
-          AND ms.winning_side IN (1,2)   -- ignore VOID/UNDEF
+          AND ms.winning_side IN (1,2)
         "#,
     )
     .bind(wallet_address)
@@ -276,7 +282,7 @@ pub async fn get_wallet_overview(
         rank,
         rank_change,
 
-        level: w.tier_label.unwrap_or_else(|| "Observer".to_string()),
+        level: tier_from_points(w.points_total).to_string(),
         points: w.points_total,
 
         streak,
@@ -295,21 +301,14 @@ pub async fn get_wallet_overview_by_address(
     struct BaseRow {
         created_at: chrono::DateTime<chrono::Utc>,
         points_total: i64,
-        tier_label: Option<String>,
     }
 
     let base: BaseRow = sqlx::query_as::<_, BaseRow>(
       r#"
       SELECT
+        w.id        AS wallet_id,
         w.created_at,
-        w.points_total,
-        CASE
-          WHEN w.points_total >= 15000 THEN 'Singularity'
-          WHEN w.points_total >= 10000 THEN 'Oracle'
-          WHEN w.points_total >=  5000 THEN 'Prophet'
-          WHEN w.points_total >=  1000 THEN 'Forecaster'
-          ELSE 'Observer'
-        END AS tier_label
+        w.points_total
       FROM wallets w
       WHERE w.wallet_address = $1
       "#,
@@ -550,7 +549,7 @@ pub async fn get_wallet_overview_by_address(
         rank,
         rank_change,
 
-        level: base.tier_label.unwrap_or_else(|| "Observer".to_string()),
+        level: tier_from_points(base.points_total).to_string(),
         points: base.points_total,
 
         streak,

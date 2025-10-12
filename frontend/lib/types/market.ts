@@ -11,10 +11,11 @@ export interface MarketFilters {
   sortBy: "volume" | "newest" | "ending" | "trending"
   search: string
 }
+const Status = z.enum(["active","awaiting_resolve","settled_yes","settled_no","void"]);
 
 export type CreateMarketResponse = {
   ok: boolean
-  marketId: string
+  marketPda: string
   tx: string
   message: string
 }
@@ -71,6 +72,7 @@ export const ListMarketSchema = z.object({
   yesPrice: z.number(),
   noPrice: z.number(),
   endDate: z.string(),
+  status: Status,
 })
 export type ListMarket = z.infer<typeof ListMarketSchema>
 

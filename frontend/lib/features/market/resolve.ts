@@ -117,8 +117,6 @@ function isSoftSimulationFailure(err: any): boolean {
   console.log("m:", m)
 
   if (m.toLowerCase().includes("this transaction has already been processed")) return true;
-  // if (m.includes("already been processed")) return true;
-
   return false;
 }
 

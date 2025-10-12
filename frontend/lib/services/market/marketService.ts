@@ -14,6 +14,7 @@ export type MarketsListParams = {
   q?: string
   sort?: "volume" | "participants" | "ending"
   signal?: AbortSignal
+  status?: string
 }
 
 export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse> {
@@ -31,7 +32,7 @@ export async function createMarket(formData: CreateMarketFormData): Promise<Crea
 		const tx = raw.tx ?? raw.createTx ?? raw.placeBetTx
 		if (!tx) throw new Error("Server didn't return a transaction.")
 
-		return { ok: raw.ok, marketId: raw.marketId, tx, message: raw.message ?? "" }
+		return { ok: raw.ok, marketPda: raw.marketId, tx, message: raw.message ?? "" }
 	} catch (err) {
 		console.error("createMarket failed:", err)
 		throw err
@@ -39,23 +40,23 @@ export async function createMarket(formData: CreateMarketFormData): Promise<Crea
 }
 
 export async function getMarketsList(opts: MarketsListParams = {}): Promise<MarketResponse> {
-  	try {
-		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`, { 
-				withCredentials: true,
-				signal: opts.signal,
-					params: {
-					limit: opts.limit,
-					cursor: opts.cursor ?? undefined,
-					category: opts.category,
-					q: opts.q,
-					sort: opts.sort,
-				},
-			}
-		)
-		return MarketResponseSchema.parse(data)
-		} catch (error: any) {
-		if (error.name === "ZodError") {
-		console.error("Invalid /markets payload:", error.errors)
+  try {
+    const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets`, {
+		withCredentials: true,
+		signal: opts.signal,
+		params: {
+			limit: opts.limit,
+			cursor: opts.cursor ?? undefined,
+			category: opts.category,
+			q: opts.q,
+			sort: opts.sort,
+			status: opts.status,
+		},
+    })
+    return MarketResponseSchema.parse(data)
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      console.error("Invalid /markets payload:", error.errors)
     } else {
       console.error("Failed to get /markets:", error)
     }

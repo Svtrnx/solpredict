@@ -1,4 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
+
+import { HermesLatestResponse } from "./types/pyth"
 import { twMerge } from "tailwind-merge"
 import { TimeLeft } from "./types"
 
@@ -102,4 +104,104 @@ export function diff(endAt: string): TimeLeft {
   const minutes = Math.floor((d % 3600000) / 60000);
   const seconds = Math.floor((d % 60000) / 1000);
   return { days, hours, minutes, seconds };
+}
+
+function applyExpoToString(intStr: string, expo: number): string {
+  if (!intStr) return "0";
+
+  const isNeg = intStr.startsWith("-");
+  const digitsOnly = isNeg ? intStr.slice(1) : intStr;
+
+  const digits = digitsOnly.replace(/^0+/, "") || "0";
+
+  if (expo >= 0) {
+    const s = digits + "0".repeat(expo);
+    return isNeg ? "-" + s : s;
+  }
+
+  const k = Math.abs(expo);
+  if (digits.length <= k) {
+    const pad = "0".repeat(k - digits.length);
+    const s = `0.${pad}${digits}`;
+    return isNeg ? "-" + s : s;
+  } else {
+    const i = digits.length - k;
+    const s = `${digits.slice(0, i)}.${digits.slice(i)}`;
+    return isNeg ? "-" + s : s;
+  }
+}
+
+export function parsePythLatestPrice(data: HermesLatestResponse): {
+  id: string;
+  priceHuman: string;
+  priceRaw: string;
+  expo: number;
+  publishTime: number;
+} {
+  const item = data?.parsed?.[0];
+  if (!item) {
+    throw new Error("Hermes: empty parsed array");
+  }
+  const p = item.price;
+  return {
+    id: item.id,
+    priceHuman: applyExpoToString(p.price, p.expo),
+    priceRaw: p.price,
+    expo: p.expo,
+    publishTime: p.publish_time,
+  };
+}
+
+export function getLevelColor(level: string) {
+  switch (level) {
+    case "Singularity": return "from-purple-400 to-pink-600";
+    case "Oracle":      return "from-blue-400 to-purple-600";
+    case "Prophet":     return "from-green-400 to-blue-600";
+    case "Forecaster":  return "from-yellow-400 to-orange-600";
+    default:            return "from-gray-400 to-gray-600";
+  }
+}
+
+export const transitionVariants = {
+    item: {
+        hidden: {
+            opacity: 0,
+            filter: 'blur(12px)',
+            y: 12,
+        },
+        visible: {
+            opacity: 1,
+            filter: 'blur(0px)',
+            y: 0,
+            transition: {
+                type: 'spring',
+                bounce: 0.3,
+                duration: 1.5,
+            },
+        },
+    },
+}
+
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+export function randomBase58(len: number): string {
+  let out = "";
+  for (let i = 0; i < len; i++) {
+    out += BASE58[Math.floor(Math.random() * BASE58.length)];
+  }
+  return out;
+}
+
+export function randomSignature(): string {
+  const len = 87 + Math.floor(Math.random() * 4); 
+  return randomBase58(len);
+}
+
+export function compactMiddle(s: string, head = 5, tail = 4): string {
+  if (s.length <= head + tail) return s;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
+
+export function generateTxPlaceholders(n: number): string[] {
+  return Array.from({ length: n }, () => compactMiddle(randomSignature()));
 }

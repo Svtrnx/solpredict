@@ -25,6 +25,7 @@ pub struct MarketRowFetch {
     pub comparator: Option<String>,
     pub bound_lo_1e6: Option<i64>,
     pub bound_hi_1e6: Option<i64>,
+    pub status: String,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -202,120 +203,153 @@ pub async fn upsert_initial_state(
     Ok(())
 }
 
+
 pub async fn fetch_markets_page(
     pool: &PgPool,
     limit: i64,
     cursor: Option<&str>,
     category: Option<&str>,
     sort: Option<&str>,
+    statuses: Option<&[&str]>,
 ) -> Result<MarketsPage> {
-    // Normalize sort key to a safe enum
-    enum SortKey {
-        Updated,
-        Volume,
-        Participants,
-        Ending,
-    }
+    //  sort key normalization 
+    #[derive(Copy, Clone, Debug)]
+    enum SortKey { Updated, Volume, Participants, Ending, Status }
+
     let sk = match sort.map(|s| s.to_ascii_lowercase()) {
-        Some(ref s) if s == "volume" => SortKey::Volume,
+        Some(ref s) if s == "volume"       => SortKey::Volume,
         Some(ref s) if s == "participants" => SortKey::Participants,
-        Some(ref s) if s == "ending" => SortKey::Ending,
-        _ => SortKey::Updated,
+        Some(ref s) if s == "ending"       => SortKey::Ending,
+        Some(ref s) if s == "status"       => SortKey::Status,
+        _                                  => SortKey::Updated,
     };
 
-    // Column, direction and comparison operator for keyset pagination
-    struct Plan {
-        col: &'static str,
-        asc: bool,
-        cmp: &'static str,
-    }
+    // sort plans 
+    struct Plan { col: &'static str, asc: bool, cmp: &'static str }
     let plan = match sk {
-        SortKey::Updated => Plan {
-            col: "updated_at",
-            asc: false,
-            cmp: "<",
-        },
-        SortKey::Volume => Plan {
-            col: "total_volume_1e6",
-            asc: false,
-            cmp: "<",
-        },
-        SortKey::Participants => Plan {
-            col: "participants",
-            asc: false,
-            cmp: "<",
-        },
-        SortKey::Ending => Plan {
-            col: "end_date_utc",
-            asc: true,
-            cmp: ">",
-        },
+        SortKey::Updated      => Plan { col: "updated_at",       asc: false, cmp: "<" },
+        SortKey::Volume       => Plan { col: "total_volume_1e6", asc: false, cmp: "<" },
+        SortKey::Participants => Plan { col: "participants",     asc: false, cmp: "<" },
+        SortKey::Ending       => Plan { col: "end_date_utc",     asc: true,  cmp: ">" },
+        SortKey::Status       => Plan { col: "status_rank",      asc: true,  cmp: ">" },
     };
-    // Decode cursor "{key}|{uuid}" and parse key based on current sort
+
+    //  cursor decode 
     enum CurVal {
         Dt(DateTime<Utc>),
         I64(i64),
+        Status { rank: i32, at: DateTime<Utc> },
     }
+
     let (cur_val, cur_id): (Option<CurVal>, Option<Uuid>) = if let Some(c) = cursor {
         let raw = general_purpose::STANDARD.decode(c)?;
         let s = String::from_utf8(raw)?;
-        let (a, b) = s.split_once('|').unwrap_or(("", ""));
-        let id = Uuid::parse_str(b).ok();
-        let v = match sk {
-            SortKey::Updated | SortKey::Ending => a.parse::<DateTime<Utc>>().ok().map(CurVal::Dt),
-            SortKey::Volume | SortKey::Participants => a.parse::<i64>().ok().map(CurVal::I64),
-        };
-        (v, id)
-    } else {
-        (None, None)
-    };
+        match sk {
+            SortKey::Updated | SortKey::Ending => {
+                let (a, b) = s.split_once('|').unwrap_or(("", ""));
+                (a.parse::<DateTime<Utc>>().ok().map(CurVal::Dt), Uuid::parse_str(b).ok())
+            }
+            SortKey::Volume | SortKey::Participants => {
+                let (a, b) = s.split_once('|').unwrap_or(("", ""));
+                (a.parse::<i64>().ok().map(CurVal::I64), Uuid::parse_str(b).ok())
+            }
+            SortKey::Status => {
+                let mut it = s.split('|');
+                let r  = it.next().unwrap_or("").parse::<i32>().ok();
+                let at = it.next().unwrap_or("").parse::<DateTime<Utc>>().ok();
+                let id = Uuid::parse_str(it.next().unwrap_or("")).ok();
+                match (r, at) {
+                    (Some(rank), Some(dt)) => (Some(CurVal::Status { rank, at: dt }), id),
+                    _ => (None, id),
+                }
+            }
+        }
+    } else { (None, None) };
 
-    // Build query with safe bindings
-    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        r#"
-        SELECT
-          id, market_pda, category, total_volume_1e6, participants, price_yes_bp,
-          end_date_utc, updated_at, symbol, market_type, comparator,
-          bound_lo_1e6, bound_hi_1e6
-        FROM market_view
-        WHERE 1=1
-        "#,
-    );
+    const ALLOWED: &[&str] = &["active","awaiting_resolve","settled_yes","settled_no","void"];
+    let mut status_vec: Vec<&str> = match statuses {
+        Some(st) => st.iter().copied().filter(|s| ALLOWED.contains(s)).collect(),
+        None     => vec!["active","awaiting_resolve"], // default "open"
+    };
+    if status_vec.is_empty() {
+        status_vec = vec!["active","awaiting_resolve"];
+    }
+
+    //  query build 
+    let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(r#"
+        WITH ranked AS (
+          SELECT
+            id, market_pda, category, total_volume_1e6, participants, price_yes_bp,
+            end_date_utc, updated_at, symbol, market_type, comparator,
+            bound_lo_1e6, bound_hi_1e6, status,
+            CASE status
+              WHEN 'active'           THEN 1
+              WHEN 'awaiting_resolve' THEN 2
+              WHEN 'settled_yes'      THEN 3
+              WHEN 'settled_no'       THEN 4
+              WHEN 'void'             THEN 5
+              ELSE 9
+            END AS status_rank
+          FROM market_view
+          WHERE 1=1
+    "#);
 
     if let Some(cat) = category {
         qb.push(" AND category = ").push_bind(cat);
     }
 
     qb.push(" AND status = ANY(")
-    .push_bind::<Vec<&str>>(vec!["active", "awaiting_resolve"])
-    .push(") ");
+      .push_bind(status_vec)
+      .push(") ) SELECT * FROM ranked WHERE 1=1 ");
 
+    //  keyset for current sort 
     if let (Some(v), Some(cid)) = (&cur_val, cur_id) {
-        qb.push(" AND (")
-            .push(plan.col)
-            .push(", id) ")
-            .push(plan.cmp)
-            .push(" (");
-        match v {
-            CurVal::Dt(dt) => qb.push_bind(dt),
-            CurVal::I64(i) => qb.push_bind(i),
-        };
-        qb.push(", ").push_bind(cid).push(") ");
+        match (sk, v) {
+            (SortKey::Updated,      CurVal::Dt(dt))  |
+            (SortKey::Ending,       CurVal::Dt(dt))  => {
+                qb.push(" AND (").push(plan.col).push(", id) ")
+                  .push(plan.cmp).push(" (").push_bind(dt).push(", ").push_bind(cid).push(") ");
+            }
+            (SortKey::Volume,       CurVal::I64(i))  |
+            (SortKey::Participants, CurVal::I64(i))  => {
+                qb.push(" AND (").push(plan.col).push(", id) ")
+                  .push(plan.cmp).push(" (").push_bind(i).push(", ").push_bind(cid).push(") ");
+            }
+            (SortKey::Status, CurVal::Status { rank, at }) => {
+                qb.push(" AND ( status_rank > ")
+                  .push_bind(*rank)
+                  .push(" OR (status_rank = ")
+                  .push_bind(*rank)
+                  .push(" AND updated_at < ")
+                  .push_bind(*at)
+                  .push(") OR (status_rank = ")
+                  .push_bind(*rank)
+                  .push(" AND updated_at = ")
+                  .push_bind(*at)
+                  .push(" AND id < ")
+                  .push_bind(cid)
+                  .push(") ) ");
+            }
+            _ => {}
+        }
     }
 
-    qb.push(" ORDER BY ").push(plan.col);
-
-    if plan.asc {
-        qb.push(" ASC, id ASC ");
-    } else {
-        qb.push(" DESC, id DESC ");
+    match sk {
+        SortKey::Status => {
+            qb.push(" ORDER BY status_rank ASC, updated_at DESC, id DESC ");
+        }
+        _ => {
+            qb.push(" ORDER BY ").push(plan.col);
+            if plan.asc { qb.push(" ASC, id ASC "); }
+            else        { qb.push(" DESC, id DESC "); }
+        }
     }
 
     qb.push(" LIMIT ").push_bind(limit + 1);
 
     let rows: Vec<PgRow> = qb.build().fetch_all(pool).await?;
 
-    // Map rows into output
+    //  map rows 
     let mut out = Vec::with_capacity(rows.len().min(limit as usize));
     for r in rows.iter().take(limit as usize) {
         out.push(MarketRowFetch {
@@ -332,32 +366,37 @@ pub async fn fetch_markets_page(
             comparator: r.try_get("comparator")?,
             bound_lo_1e6: r.try_get("bound_lo_1e6")?,
             bound_hi_1e6: r.try_get("bound_hi_1e6")?,
+            status: r.try_get("status")?,
         });
     }
 
-    // Encode next cursor using the same sort key
+    //  next cursor 
     let next_cursor = if rows.len() as i64 > limit {
         if let Some(last) = out.last() {
-            let key_str = match sk {
-                SortKey::Updated => last.updated_at.to_rfc3339(),
-                SortKey::Ending => last.end_date_utc.to_rfc3339(),
-                SortKey::Volume => last.total_volume_1e6.to_string(),
-                SortKey::Participants => last.participants.to_string(),
+            let enc = match sk {
+                SortKey::Updated      => format!("{}|{}", last.updated_at.to_rfc3339(), last.id),
+                SortKey::Ending       => format!("{}|{}", last.end_date_utc.to_rfc3339(), last.id),
+                SortKey::Volume       => format!("{}|{}", last.total_volume_1e6, last.id),
+                SortKey::Participants => format!("{}|{}", last.participants, last.id),
+                SortKey::Status       => {
+                    let rank = match last.status.as_str() {
+                        "active"           => 1,
+                        "awaiting_resolve" => 2,
+                        "settled_yes"      => 3,
+                        "settled_no"       => 4,
+                        "void"             => 5,
+                        _                  => 9,
+                    };
+                    format!("{}|{}|{}", rank, last.updated_at.to_rfc3339(), last.id)
+                }
             };
-            let s = format!("{}|{}", key_str, last.id);
-            Some(general_purpose::STANDARD.encode(s.as_bytes()))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+            Some(general_purpose::STANDARD.encode(enc.as_bytes()))
+        } else { None }
+    } else { None };
 
-    Ok(MarketsPage {
-        items: out,
-        next_cursor,
-    })
+    Ok(MarketsPage { items: out, next_cursor })
 }
+
 
 pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<Option<MarketRow>> {
     let row = sqlx::query_as!(

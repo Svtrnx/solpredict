@@ -36,6 +36,7 @@ pub struct MarketDtoV2 {
     yes_price: f64,
     no_price: f64,
     end_date: String,
+    status: String,
 }
 
 #[derive(Serialize)]
@@ -52,6 +53,7 @@ pub struct MarketsQuery {
     cursor: Option<String>,      // cursor for keyset
     category: Option<String>,    // filter by category
     sort: Option<String>,        // sort
+    status: Option<String>,
 }
 
 pub const DATETIME_QUESTION: &str = "%b %d, %Y UTC";
@@ -74,15 +76,41 @@ pub async fn list(
 ) -> Result<Json<MarketsPageResponse>, (StatusCode, String)> {
     let limit = q.limit.unwrap_or(15).clamp(1, 100) as i64;
 
+    const ALLOWED: &[&str] = &["active","awaiting_resolve","settled_yes","settled_no","void"];
+
+    let wanted_owned: Vec<String> = match q.status.as_deref() {
+        None => vec!["active".into(), "awaiting_resolve".into()], 
+        Some(s) if s.eq_ignore_ascii_case("all") => {
+            ALLOWED.iter().map(|x| (*x).to_string()).collect()
+        }
+        Some(s) => {
+            let v = s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty() && ALLOWED.contains(&x.as_str()))
+                .collect::<Vec<_>>();
+            if v.is_empty() {
+                return Err((StatusCode::BAD_REQUEST,
+                    "invalid status; allowed: active,awaiting_resolve,settled_yes,settled_no,void, or status=all"
+                        .to_string()));
+            }
+            v
+        }
+    };
+
+    let wanted_refs: Vec<&str> = wanted_owned.iter().map(|s| s.as_str()).collect();
+
     let page = market_repo::fetch_markets_page(
         state.db.pool(),
         limit,
         q.cursor.as_deref(),
         q.category.as_deref(),
         q.sort.as_deref(),
-    ).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;
+        Some(&wanted_refs),
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;    
 
-    let items = page.items.into_iter().map(|m| MarketDtoV2{
+    let items = page.items.into_iter().map(|m| MarketDtoV2 {
         id: m.id,
         title: generate_title(&TitleSpec::from(&m)),
         market_pda: m.market_pda,
@@ -92,10 +120,13 @@ pub async fn list(
         yes_price: (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
         no_price: 1.0 - (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
         end_date: m.end_date_utc.to_rfc3339(),
+        status: m.status,
     }).collect();
 
-    Ok(Json(MarketsPageResponse{ ok: true, items, next_cursor: page.next_cursor }))
+    Ok(Json(MarketsPageResponse { ok: true, items, next_cursor: page.next_cursor }))
 }
+
+
 
 // ====== GET /v1/markets/{market_address} ======
 

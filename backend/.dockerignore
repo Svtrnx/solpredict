@@ -1,0 +1,9 @@
+target
+**/target
+**/.cargo
+**/.vscode
+**/.idea
+**/*.log
+**/*.tmp
+**/*.swp
+.env

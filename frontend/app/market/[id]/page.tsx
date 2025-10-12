@@ -182,6 +182,15 @@ export default function MarketPage() {
   const connection = useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
   type ResolveStepId = "post:init" | "post:write" | "resolve"
 
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const data = await getMarket(market_pda)
+      setMarket(data)
+    } catch (e: any) {
+      console.error("Failed to refresh market data:", e)
+    }
+  }, [market_pda])
+
   async function handleResolve() {
     try {
       const idxOf: Record<ResolveStepId, number> = {
@@ -230,6 +239,10 @@ export default function MarketPage() {
       })
 
       console.log("Market resolution completed")
+
+      setTimeout(() => {
+        fetchMarketData()
+      }, 2200)
     } catch (err: any) {
       console.error("Failed to resolve market:", err)
     }
@@ -267,8 +280,10 @@ export default function MarketPage() {
 
       setBetAmount("")
       setSelectedSide(null)
-      const fresh = await getMarket(market_pda)
-      setMarket(fresh)
+
+      setTimeout(() => {
+        fetchMarketData()
+      }, 2200)
     } catch (err: any) {
       const msg = String(err?.message ?? err)
       if (/blockhash/i.test(msg)) {
@@ -280,7 +295,7 @@ export default function MarketPage() {
     } finally {
       setIsPlacingBet(false)
     }
-  }, [selectedSide, betAmount, market, numericBalance, wallet, connection, market_pda])
+  }, [selectedSide, betAmount, market, numericBalance, wallet, connection, market_pda, fetchMarketData])
 
   useEffect(() => {
     let alive = true
@@ -300,6 +315,16 @@ export default function MarketPage() {
       alive = false
     }
   }, [market_pda])
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchMarketData()
+    }, 30000) // 30 seconds
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [fetchMarketData])
 
   const handleQuickAmount = useCallback((amount: number) => {
     setBetAmount(amount.toString())
@@ -363,7 +388,7 @@ export default function MarketPage() {
   const statusLabel = { open: "Active", locked: "Locked", settled: "Settled", void: "Void" }[market.status]
   const canPlace = !!selectedSide && !!betAmount && Number.parseFloat(betAmount) <= numericBalance && !isPlacingBet
 
-  const isLocked = market?.status === "locked" || market?.status === 'void' || market?.status === "settled"
+  const isLocked = market?.status === "locked"
   const hasEnded = new Date(market.endDate) <= new Date()
   const canResolve = hasEnded && (market.status === "open" || market.status === "locked")
   const isVoid = market?.status === "void"
@@ -371,13 +396,13 @@ export default function MarketPage() {
 
   const handleCopy = async (address: string) => {
     try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
     } catch {
-      setCopied(false);
+      setCopied(false)
     }
-  };
+  }
   return (
     <div className={`min-h-screen bg-background relative overflow-hidden ${isMobile ? "pt-40" : "pt-24"}`}>
       <div className="absolute inset-0 radial-glow"></div>
@@ -418,7 +443,9 @@ export default function MarketPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {handleCopy(market.creator)}}
+                            onClick={() => {
+                              handleCopy(market.creator)
+                            }}
                             className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
                           >
                             {copied ? (
@@ -434,16 +461,16 @@ export default function MarketPage() {
                             )}
                           </Button>
                           <Button
-                              asChild
-                              variant="outline"
-                              size="sm"
-                              className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
-                            >
-                              <Link href={`/profile/${market.creator}`} target="_blank" rel="noopener noreferrer">
-                                <User className="w-3 h-3 mr-1" />
-                                Profile
-                              </Link>
-                            </Button>
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                          >
+                            <Link href={`/profile/${market.creator}`} target="_blank" rel="noopener noreferrer">
+                              <User className="w-3 h-3 mr-1" />
+                              Profile
+                            </Link>
+                          </Button>
                         </div>
                       </div>
                     </TooltipContent>
@@ -552,7 +579,9 @@ export default function MarketPage() {
                                       <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => {handleCopy(market.settler ? market.settler : "")}}
+                                        onClick={() => {
+                                          handleCopy(market.settler ? market.settler : "")
+                                        }}
                                         className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
                                       >
                                         {copied ? (
@@ -568,16 +597,20 @@ export default function MarketPage() {
                                         )}
                                       </Button>
                                       <Button
-                                          asChild
-                                          variant="outline"
-                                          size="sm"
-                                          className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                        asChild
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                      >
+                                        <Link
+                                          href={`/profile/${market.settler}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
                                         >
-                                          <Link href={`/profile/${market.settler}`} target="_blank" rel="noopener noreferrer">
-                                            <User className="w-3 h-3 mr-1" />
-                                            Profile
-                                          </Link>
-                                        </Button>
+                                          <User className="w-3 h-3 mr-1" />
+                                          Profile
+                                        </Link>
+                                      </Button>
                                     </div>
                                   </div>
                                 </TooltipContent>
@@ -659,7 +692,9 @@ export default function MarketPage() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          onClick={() => {handleCopy(market.settler ? market.settler : "")}}
+                                          onClick={() => {
+                                            handleCopy(market.settler ? market.settler : "")
+                                          }}
                                           className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
                                         >
                                           {copied ? (
@@ -675,16 +710,20 @@ export default function MarketPage() {
                                           )}
                                         </Button>
                                         <Button
-                                            asChild
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                          asChild
+                                          variant="outline"
+                                          size="sm"
+                                          className="flex-1 h-8 text-xs cursor-pointer bg-background hover:bg-accent"
+                                        >
+                                          <Link
+                                            href={`/profile/${market.settler}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                           >
-                                            <Link href={`/profile/${market.settler}`} target="_blank" rel="noopener noreferrer">
-                                              <User className="w-3 h-3 mr-1" />
-                                              Profile
-                                            </Link>
-                                          </Button>
+                                            <User className="w-3 h-3 mr-1" />
+                                            Profile
+                                          </Link>
+                                        </Button>
                                       </div>
                                     </div>
                                   </TooltipContent>
@@ -703,7 +742,10 @@ export default function MarketPage() {
                         </div>
                       </div>
                       {isAuthorized && (
-                        <Button onClick={() => window.location.href = '/dashboard'} className="w-full h-11 text-sm font-bold cursor-pointer bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/20">
+                        <Button
+                          onClick={() => (window.location.href = "/dashboard")}
+                          className="w-full h-11 text-sm font-bold cursor-pointer bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/20"
+                        >
                           Claim Winnings
                         </Button>
                       )}
@@ -793,7 +835,7 @@ export default function MarketPage() {
                       </div>
                       <div className="space-y-2">
                         <h3 className="text-xl font-bold gradient-text">Market Ended</h3>
-                        <p className="text-sm text-muted-foreground max-w-sm">
+                        <p className="text-sm text-muted-foreground max-sm">
                           This market has reached its end date and is ready to be resolved. Click the button below to
                           resolve the market based on the oracle data.
                         </p>
@@ -985,7 +1027,7 @@ export default function MarketPage() {
                                   <TooltipContent
                                     side="left"
                                     sideOffset={5}
-                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                    className="bg-background border border-border p-3 max-w-xs z-50"
                                   >
                                     <div className="space-y-1">
                                       <p className="text-xs font-semibold">Formula:</p>
@@ -1026,7 +1068,7 @@ export default function MarketPage() {
                                   <TooltipContent
                                     side="left"
                                     sideOffset={5}
-                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                    className="bg-background border border-border p-3 max-w-xs z-50"
                                   >
                                     <div className="space-y-1">
                                       <p className="text-xs font-semibold">Formula:</p>
@@ -1056,7 +1098,7 @@ export default function MarketPage() {
                                   <TooltipContent
                                     side="left"
                                     sideOffset={5}
-                                    className="bg-card border border-border p-3 max-w-xs z-50"
+                                    className="bg-background border border-border p-3 max-w-xs z-50"
                                   >
                                     <div className="space-y-1">
                                       <p className="text-xs font-semibold">Formula:</p>
@@ -1078,13 +1120,6 @@ export default function MarketPage() {
                         </div>
                       </div>
                     )}
-
-                    {/* {priceImpact > 0.05 && (
-                      <div className="flex items-center space-x-2 text-yellow-400 text-xs bg-yellow-400/10 p-2.5 rounded-lg border border-yellow-500/20">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>High price impact: {(priceImpact * 100).toFixed(1)}%</span>
-                      </div>
-                    )} */}
 
                     <Button
                       onClick={handleBet}

@@ -291,7 +291,7 @@ export function ActiveBetsTab({ activeBets, isOwner }: ActiveBetsTabProps) {
                         {bet.amount} USDC
                       </span>
 
-                      {!isVoid && pYes != null && (
+                      {/* {!isVoid && pYes != null && (
                         <>
                           <span className="text-[12px] text-muted-foreground">·</span>
                           <div className="flex items-center gap-1">
@@ -299,7 +299,7 @@ export function ActiveBetsTab({ activeBets, isOwner }: ActiveBetsTabProps) {
                             <span className="text-[12px] text-blue-400 font-semibold">$123.2</span>
                           </div>
                         </>
-                      )}
+                      )} */}
                     </div>
                   </div>
                 </div>

@@ -13,8 +13,8 @@ use tower_http::{
     request_id::{MakeRequestUuid, SetRequestIdLayer, PropagateRequestIdLayer},
     trace::{TraceLayer, DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse},
     classify::ServerErrorsFailureClass,
+    cors::{CorsLayer, AllowOrigin},
     timeout::TimeoutLayer,
-    cors::CorsLayer,
 };
 
 use crate::middleware::auth::require_user;
@@ -28,13 +28,18 @@ pub fn build(state: SharedState) -> Router {
     // --- rate limit ---
     let governor = GovernorConfigBuilder::default()
         .per_second(1)
-        .burst_size(25)
+        .burst_size(35)
         .finish()
         .unwrap();
 
     // --- CORS ---
+    let origin: HeaderValue = state
+        .uri
+        .parse()
+        .expect("SOLPREDICT_URI must be a valid origin");
+
     let cors = CorsLayer::new()
-        .allow_origin(HeaderValue::from_static("http://localhost:3000"))
+        .allow_origin(AllowOrigin::exact(origin))
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE])
         .allow_credentials(true);

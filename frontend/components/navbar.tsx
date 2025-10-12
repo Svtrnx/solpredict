@@ -26,10 +26,10 @@ export function Navbar() {
           <Link href="/" className="flex items-center space-x-2">
           <div className="relative h-10 w-10">
             <Image
-              src="/images/solpredict.png"
+              src="/logo.png"
               alt="SolPredict Logo"
-              width={35}
-              height={35}
+              width={32}
+              height={32}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
             />
           </div>

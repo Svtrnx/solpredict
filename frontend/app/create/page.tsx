@@ -30,12 +30,16 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+import { openStepper, setStepStatus, nextStep, setMarketPda } from "@/lib/features/marketCreationStepperSlice"
+import { WalletAuthorizationGuard } from "@/components/wallet-authorization-guard"
+import { MarketCreationStepper } from "@/components/market-creation-stepper"
+import { getPythFeeds, getPythFeed } from "@/lib/services/pyth/feedService"
 import { createMarket } from "@/lib/services/market/marketService"
-import { signAndSendBase64Tx } from "@/lib/solana/signAndSend"
-import { getPythFeeds } from "@/lib/services/pyth/feedService"
+import { signAndSendBase64TxV2 } from "@/lib/solana/signAndSend"
 import { showToast } from "@/components/shared/show-toast"
 import type { CreateMarketFormData } from "@/lib/types"
 import type { PythFeedItem } from "@/lib/types/pyth"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks"
 
 type MarketTemplate = "priceThreshold" | "priceRange" | "custom"
 
@@ -49,7 +53,16 @@ const comparators = [
 
 const toUtcMidnight = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
 
+const getMinimumDate = () => {
+  const now = new Date()
+  const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
+  return toUtcMidnight(twoDaysFromNow)
+}
+
 export default function CreateMarketPage() {
+  const dispatch = useAppDispatch()
+  const { isAuthorized } = useAppSelector((state) => state.wallet)
+
   const [selectedTemplate, setSelectedTemplate] = useState<MarketTemplate>("priceThreshold")
   const [formData, setFormData] = useState({
     marketType: selectedTemplate,
@@ -78,8 +91,6 @@ export default function CreateMarketPage() {
     getPythFeeds()
       .then(setPythFeeds)
       .catch((e: any) => console.error("Failed to load Pyth feeds", e))
-      const devTime = new Date(Date.now() + 3 * 60 * 1000)
-      formData.endDate = devTime
   }, [])
 
   const validateForm = () => {
@@ -89,50 +100,32 @@ export default function CreateMarketPage() {
       newErrors.initialSide = "Please select Yes or No"
     }
 
-    if (selectedTemplate === "custom") {
-      if (!formData.title.trim()) {
-        newErrors.title = "Market title is required"
-      } else if (formData.title.length < 10) {
-        newErrors.title = "Title must be at least 10 characters"
-      }
+    if (!formData.feedId) {
+      newErrors.feedId = "Please select an feedId"
+    }
 
-      if (!formData.description.trim()) {
-        newErrors.description = "Market description is required"
-      } else if (formData.description.length < 50) {
-        newErrors.description = "Description must be at least 50 characters"
+    if (selectedTemplate === "priceThreshold") {
+      if (!formData.comparator) {
+        newErrors.comparator = "Please select a comparator"
       }
+      if (!formData.threshold) {
+        newErrors.threshold = "Threshold value is required"
+      }
+    }
 
-      if (!formData.resolutionSource.trim()) {
-        newErrors.resolutionSource = "Resolution source is required"
+    if (selectedTemplate === "priceRange") {
+      if (!formData.lowerBound) {
+        newErrors.lowerBound = "Lower bound is required"
       }
-    } else {
-      if (!formData.feedId) {
-        newErrors.feedId = "Please select an feedId"
+      if (!formData.upperBound) {
+        newErrors.upperBound = "Upper bound is required"
       }
-
-      if (selectedTemplate === "priceThreshold") {
-        if (!formData.comparator) {
-          newErrors.comparator = "Please select a comparator"
-        }
-        if (!formData.threshold) {
-          newErrors.threshold = "Threshold value is required"
-        }
-      }
-
-      if (selectedTemplate === "priceRange") {
-        if (!formData.lowerBound) {
-          newErrors.lowerBound = "Lower bound is required"
-        }
-        if (!formData.upperBound) {
-          newErrors.upperBound = "Upper bound is required"
-        }
-        if (
-          formData.lowerBound &&
-          formData.upperBound &&
-          Number.parseFloat(formData.lowerBound) >= Number.parseFloat(formData.upperBound)
-        ) {
-          newErrors.upperBound = "Upper bound must be greater than lower bound"
-        }
+      if (
+        formData.lowerBound &&
+        formData.upperBound &&
+        Number.parseFloat(formData.lowerBound) >= Number.parseFloat(formData.upperBound)
+      ) {
+        newErrors.upperBound = "Upper bound must be greater than lower bound"
       }
     }
 
@@ -142,8 +135,8 @@ export default function CreateMarketPage() {
 
     if (!formData.endDate) {
       newErrors.endDate = "End date is required"
-    } else if (formData.endDate <= new Date()) {
-      newErrors.endDate = "End date must be in the future"
+    } else if (formData.endDate <= getMinimumDate()) {
+      newErrors.endDate = "End date must be at least 2 days in the future"
     }
 
     if (!formData.initialLiquidity) {
@@ -214,70 +207,154 @@ export default function CreateMarketPage() {
   const wallet = useWallet()
   const connection = React.useMemo(() => new Connection("https://api.devnet.solana.com", "processed"), [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleCreateMarket = async () => {
     try {
-      e.preventDefault()
-      if (isSubmitting) return;
-
-      if (!validateForm()) {
+      if (!isAuthorized) {
+        showToast("danger", "Please connect your wallet first!")
         return
       }
 
+      if (isSubmitting) return
+      if (!validateForm()) {
+        return
+      }
       setIsSubmitting(true)
 
       if (formData.feedId.length < 5 || !formData.endDate || !formData.initialLiquidity || !formData.category) {
         showToast("danger", "Complete all fields!")
         return
       }
-      const formData_: CreateMarketFormData = {
-        marketType: selectedTemplate,
-        category: formData.category,
-        endDate: formData.endDate,
-        initialLiquidity: Number(formData.initialLiquidity),
-        feedId: formData.feedId,
-        symbol: formData.symbol,
-        comparator: formData.comparator,
-        threshold: Number(formData.threshold),
-        lowerBound: Number(formData.lowerBound),
-        upperBound: Number(formData.upperBound),
-        initialSide: formData.initialSide,
+
+      dispatch(openStepper())
+
+      try {
+        // Fetch Pyth price
+        dispatch(setStepStatus({ step: 0, status: "active" }))
+
+        const priceData = await getPythFeed(formData.feedId)
+        console.log("price data:", priceData)
+
+        if (priceData <= 0) {
+          dispatch(
+            setStepStatus({
+              step: 0,
+              status: "error",
+              message: `Price validation failed: Price is ${priceData}, which is not greater than 0. Please check your feed ID.`,
+            }),
+          )
+          return
+        }
+
+        dispatch(
+          setStepStatus({
+            step: 0,
+            status: "success",
+            message: `Price fetched successfully: ${priceData}`,
+          }),
+        )
+        dispatch(nextStep())
+
+        const formData_: CreateMarketFormData = {
+          marketType: selectedTemplate,
+          category: formData.category,
+          endDate: formData.endDate,
+          initialLiquidity: Number(formData.initialLiquidity),
+          feedId: formData.feedId,
+          symbol: formData.symbol,
+          comparator: formData.comparator,
+          threshold: Number(formData.threshold),
+          lowerBound: Number(formData.lowerBound),
+          upperBound: Number(formData.upperBound),
+          initialSide: formData.initialSide,
+        }
+
+        dispatch(setStepStatus({ step: 1, status: "active" }))
+
+        // Get tx, market_pda
+        const resp = await createMarket(formData_)
+        const { tx, marketPda } = resp
+
+        if (!tx || typeof tx !== "string") {
+          console.error("Bad response from server:", resp)
+          showToast("danger", "Server didn't return a transaction to sign.")
+          dispatch(
+            setStepStatus({
+              step: 1,
+              status: "error",
+              message: `Server didn't return a transaction to sign.`,
+            }),
+          )
+          return
+        }
+
+        // Sign transaction
+        const txResult = await signAndSendBase64TxV2(tx, wallet, connection)
+
+        console.log("sig:", txResult)
+
+        if (txResult.status === "error") {
+          dispatch(
+            setStepStatus({
+              step: 1,
+              status: "error",
+              message: `Transaction signing failed. ${txResult.message}`,
+            }),
+          )
+          return
+        } else if (txResult.status === "warning") {
+          if (marketPda) {
+            dispatch(setMarketPda(marketPda))
+          }
+          dispatch(
+            setStepStatus({
+              step: 1,
+              status: "warning",
+              message: `Simulation error. ${txResult.message}`,
+            }),
+          )
+          return
+        }
+
+        if (marketPda) {
+          dispatch(setMarketPda(marketPda))
+        }
+
+        dispatch(
+          setStepStatus({
+            step: 1,
+            status: "success",
+            message: `Transaction signed successfully: ${txResult.signature}`,
+          }),
+        )
+      } catch (error) {
+        console.error("Market creation error:", error)
+        dispatch(
+          setStepStatus({
+            step: 0,
+            status: "error",
+            message: "An unexpected error occurred. Please try again.",
+          }),
+        )
       }
-
-      const resp = await createMarket(formData_)
-      const { tx, marketId } = resp
-
-      if (!tx || typeof tx !== "string") {
-        console.error("Bad response from server:", resp)
-        showToast("danger", "Server didn't return a transaction to sign.")
-        return
-      }
-
-      const sig = await signAndSendBase64Tx(tx, wallet, connection)
-      showToast("success", `Transaction sent: ${sig}`)
-
-      // try {
-      //   await confirmMarket(formData_, marketId, sig)
-      // } catch (e) {
-      //   console.warn("confirm failed", e)
-      // }
-      showToast("success", `Market ${marketId} created!`)
-    } catch (err: any) {
-      const msg = String(err?.message ?? err)
-      if (/blockhash/i.test(msg)) {
-        showToast("danger", "Transaction expired. Please try again.")
-      } else {
-        showToast("danger", "Failed to create market!")
-      }
-      console.error(err)
+    } catch (error: any) {
+      console.error(error)
+      showToast("danger", error)
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  if (!isAuthorized) {
+    return (
+      <WalletAuthorizationGuard>
+        <></>
+      </WalletAuthorizationGuard>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
       <div className="absolute inset-0 radial-glow"></div>
-      {/* <div className="absolute top-20 left-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-3000"></div> */}
-      {/* <div className="absolute bottom-20 right-20 w-80 h-80 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
 
       <div className="relative z-10 max-w-4xl mx-auto p-6 space-y-8">
         {/* Page Header */}
@@ -341,7 +418,13 @@ export default function CreateMarketPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleCreateMarket()
+              }}
+              className="space-y-6"
+            >
               {selectedTemplate !== "custom" && (
                 <div className="space-y-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
                   <h3 className="text-lg font-semibold flex items-center space-x-2">
@@ -412,7 +495,7 @@ export default function CreateMarketPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Threshold ($)</Label>
+                        <Label>Threshold (USDC)</Label>
                         <Input
                           type="number"
                           placeholder="50000"
@@ -434,7 +517,7 @@ export default function CreateMarketPage() {
                   {selectedTemplate === "priceRange" && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Lower Bound ($)</Label>
+                        <Label>Lower Bound (USDC)</Label>
                         <Input
                           type="number"
                           placeholder="40000"
@@ -452,7 +535,7 @@ export default function CreateMarketPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Upper Bound ($)</Label>
+                        <Label>Upper Bound (USDC)</Label>
                         <Input
                           type="number"
                           placeholder="60000"
@@ -548,20 +631,22 @@ export default function CreateMarketPage() {
                         mode="single"
                         captionLayout="dropdown"
                         selected={formData.endDate}
-                        // selected={nowPlus12Min}
                         onSelect={(date) => {
                           if (!date) return
                           const utc = toUtcMidnight(date)
                           setFormData((prev) => ({ ...prev, endDate: utc }))
-                          if (errors.endDate && utc > new Date()) {
+                          if (errors.endDate && utc > getMinimumDate()) {
                             const { endDate: _, ...rest } = errors
                             setErrors(rest)
                           }
                           setEndDateOpen(false)
                         }}
-                        disabled={(date) => date <= new Date() || date < new Date("1900-01-01")}
+                        disabled={(date) => {
+                          const minDate = getMinimumDate()
+                          return date < minDate || date < new Date("1900-01-01")
+                        }}
                         initialFocus
-                        fromDate={new Date()}
+                        fromDate={getMinimumDate()}
                         toDate={new Date(new Date().getFullYear() + 10, 11, 31)}
                       />
                     </PopoverContent>
@@ -572,7 +657,9 @@ export default function CreateMarketPage() {
                       <span>{errors.endDate}</span>
                     </div>
                   )}
-                  <p className="text-sm text-muted-foreground">Select when this market should end and be resolved</p>
+                  <p className="text-sm text-muted-foreground">
+                    Select a date at least 2 days in the future (time will be set to 12:00 AM UTC)
+                  </p>
                 </div>
               </div>
 
@@ -820,6 +907,7 @@ export default function CreateMarketPage() {
           </CardContent>
         </Card>
       </div>
+      <MarketCreationStepper onStartCreating={handleCreateMarket} />
     </div>
   )
 }

@@ -1,9 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Darker+Grotesque:wght@300..900&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --animate-ripple: ripple var(--duration, 2s) ease calc(var(--i, 0) * 0.2s) infinite;
+  --animate-float: sp-float 6s ease-in-out infinite;
+
+  @keyframes ripple {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+      transform: translate(-50%, -50%) scale(0.9);
+    }
+  }
+  --font-darker: "Darker Grotesque", ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
@@ -44,9 +58,18 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+@utility font-darker {
+  font-family: var(--font-darker);
+}
+
+@utility animate-float {
+  animation: var(--animate-float);
+  will-change: transform;
+}
+
 :root {
   color-scheme: dark;
-
+  /* font-family: "Darker Grotesque", "Darker Grotesque Fallback"; */
   --background: #0a0a0a;
   --foreground: #f5f5f5;
   --card: rgba(255, 255, 255, 0.03);
@@ -399,14 +422,14 @@
     }
   }
 
-  @keyframes fade-in {
+  /* @keyframes fade-in {
     0% {
       opacity: 0;
     }
     100% {
       opacity: 1;
     }
-  }
+  } */
 
   @keyframes fade-in-left {
     0% {
@@ -540,9 +563,9 @@
     animation: chart-bar 1s ease-out forwards;
   }
 
-  .animate-fade-in {
+  /* .animate-fade-in {
     animation: fade-in 0.6s ease-out forwards;
-  }
+  } */
 
   .animate-marquee {
     animation: marquee var(--duration) linear infinite;
@@ -696,3 +719,9 @@
 
 @keyframes spin-slow { from { transform: rotate(0) } to { transform: rotate(360deg) } }
 .animate-spin-slow { animation: spin-slow 1.4s linear infinite; }
+
+@keyframes sp-float {
+  0%, 100% { transform: translate3d(0,0,0) rotate(0deg); }
+  50%      { transform: translate3d(0,-10px,0) rotate(-1deg); }
+}
+

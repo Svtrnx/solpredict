@@ -8,7 +8,6 @@ import { WalletConnectButton } from "./wallet-connect-button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAppSelector } from "@/lib/hooks"
 
-
 interface WalletAuthorizationGuardProps {
   children: React.ReactNode
 }
@@ -37,9 +36,6 @@ export function WalletAuthorizationGuard({ children }: WalletAuthorizationGuardP
     return (
       <div className="min-h-screen bg-background relative overflow-hidden pt-40 md:pt-24">
         <div className="absolute inset-0 radial-glow"></div>
-        {/* <div className="absolute top-20 left-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"></div> */}
-        {/* <div className="absolute bottom-20 right-20 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div> */}
-
         <div className="relative z-10 max-w-2xl mx-auto p-6">
           <Card className="glass glow text-center">
             <CardContent className="pt-12 pb-12">
@@ -53,8 +49,8 @@ export function WalletAuthorizationGuard({ children }: WalletAuthorizationGuardP
               </p>
 
               <div className="flex items-center justify-center gap-2 mb-8">
-                <img src="/phantom-icon.svg" alt="Phantom" className="w-5 h-5" />
-                <span className="text-sm text-purple-400 font-medium">Powered by Phantom Wallet</span>
+                <img src="images/solana.svg" alt="Phantom" className="w-5 h-5" />
+                <span className="text-sm text-purple-400 font-medium">Compatible with Solana Wallets</span>
               </div>
 
               <div className="space-y-4">

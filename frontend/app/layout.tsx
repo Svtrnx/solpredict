@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "-
 export const metadata: Metadata = {
   title: "SolPredict - Decentralized Prediction Markets",
   description: "Trade predictions on Solana blockchain",
-  icons: { icon: "/images/solpredict.png" },
+  // icons: { icon: "/images/solpredict.png" },
+  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
