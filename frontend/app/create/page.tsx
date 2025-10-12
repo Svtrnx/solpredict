@@ -88,6 +88,12 @@ export default function CreateMarketPage() {
   const categories = [{ value: "crypto", label: "Crypto" }]
 
   useEffect(() => {
+    // const currentTime = new Date();
+    // currentTime.setMinutes(currentTime.getMinutes() + 5);
+    // setFormData((prevData) => ({
+    //   ...prevData,
+    //   endDate: currentTime,
+    // }));
     getPythFeeds()
       .then(setPythFeeds)
       .catch((e: any) => console.error("Failed to load Pyth feeds", e))

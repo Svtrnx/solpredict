@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState, useMemo } from "react"
 import { useTheme } from "next-themes"
 
 import { motion, useInView } from "framer-motion"
@@ -12,17 +12,28 @@ import { DotPattern } from "./ui/dot-pattern"
 import { Ripple } from "./ui/ripple"
 import Earth from "./ui/globe"
 
+function useIsIOS() {
+  return useMemo(() => {
+    if (typeof navigator === "undefined") return false
+    const ua = navigator.userAgent
+    const isiOS = /iPad|iPhone|iPod/.test(ua)
+    const iPadOS13Plus = /Macintosh/.test(ua) && (navigator as any).maxTouchPoints > 1
+    return isiOS || iPadOS13Plus
+  }, [])
+}
+
 export default function Features() {
   const ref = useRef(null)
   const { theme } = useTheme()
   const isInView = useInView(ref, { once: true, amount: 0.1 })
   const [isCliHovering, setIsCliHovering] = useState(false)
-  const [texts, setTexts] = useState([''])
+  const [texts, setTexts] = useState([""])
 
   const [baseColor, setBaseColor] = useState<[number, number, number]>([0.7, 0.7, 0.7])
   const [glowColor, setGlowColor] = useState<[number, number, number]>([0.9, 0.9, 0.9])
 
   const [dark, setDark] = useState<number>(theme === "dark" ? 1 : 0)
+  const isIOS = useIsIOS()
 
   useEffect(() => {
     setBaseColor([0.7, 0.7, 0.7])
@@ -33,12 +44,20 @@ export default function Features() {
 
   return (
     <section id="features" className="text-foreground relative overflow-hidden py-12 sm:py-24 md:py-32">
+      {isIOS ? (<></>) :
+      (
       <motion.div
-        className="bg-primary absolute -top-10 left-1/2 h-18 w-52 -translate-x-1/2 rounded-full opacity-40 blur-3xl select-none"
+        className="bg-primary absolute -top-10 left-1/2 h-18 w-52 -translate-x-1/2 rounded-full opacity-40 blur-3xl select-none transform-gpu will-change-transform"
+        style={{
+          WebkitBackfaceVisibility: "hidden",
+          backfaceVisibility: "hidden",
+          transform: "translate3d(-50%, 0, 0)",
+        }}
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 0.4 }}
         transition={{ duration: 1.2, ease: "easeOut" }}
       />
+      )}
       <motion.div
         className="via-primary/50 absolute top-0 left-1/2 h-px -translate-x-1/2 bg-gradient-to-r from-transparent to-transparent transition-all ease-in-out"
         initial={{ width: "0%", opacity: 0 }}
@@ -71,21 +90,20 @@ export default function Features() {
           }
         >
           <div className="cursor-none">
-            <div className="grid grid-cols-11 gap-4 justify-center mr-3">
+            <div className="grid gap-4 justify-center">
               <motion.div
                 className="group border-secondary/40 text-card-foreground relative col-span-12 flex flex-col overflow-hidden rounded-xl border-2 p-6 shadow-xl transition-all ease-in-out md:col-span-6 xl:col-span-6 xl:col-start-2"
                 onMouseEnter={() => setIsCliHovering(true)}
                 onMouseLeave={() => setIsCliHovering(false)}
                 ref={ref}
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
                 transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
                 whileHover={{
                   scale: 1.02,
-                  borderColor: "rgba(115, 115, 115, 0.6)",
-                  boxShadow: "0 0 30px rgba(115, 115, 115, 0.2)",
-                  transition: { duration: 0.3 },
+                  transition: { duration: 0.3, ease: "easeOut" },
                 }}
+                style={{ willChange: "transform" }}
               >
                 <div className="flex flex-col gap-4">
                   <h3 className="text-2xl leading-none font-semibold tracking-tight">
@@ -160,9 +178,18 @@ export default function Features() {
                       <div className="flex items-center gap-8">
                         <div className="flex flex-col gap-3">
                           {[
-                            { name: "Solana", icon: "/images/solana.svg" },
-                            { name: "Ethereum", icon: "/images/eth.svg" },
-                            { name: "Bitcoin", icon: "/images/btc.svg" },
+                            {
+                              name: "Solana",
+                              icon: "/images/solana.svg",
+                            },
+                            {
+                              name: "Ethereum",
+                              icon: "/images/eth.svg",
+                            },
+                            {
+                              name: "Bitcoin",
+                              icon: "/images/btc.svg",
+                            },
                           ].map((item, index) => (
                             <motion.div
                               key={`left-${index}`}
@@ -197,9 +224,18 @@ export default function Features() {
 
                         <div className="flex flex-col gap-3">
                           {[
-                            { name: "Polygon", icon: "/images/polygon.svg" },
-                            { name: "Arbitrum", icon: "/images/arbitrum.svg" },
-                            { name: "Base", icon: "/images/base.svg" },
+                            {
+                              name: "Polygon",
+                              icon: "/images/polygon.svg",
+                            },
+                            {
+                              name: "Arbitrum",
+                              icon: "/images/arbitrum.svg",
+                            },
+                            {
+                              name: "Base",
+                              icon: "/images/base.svg",
+                            },
                           ].map((item, index) => (
                             <motion.div
                               key={`right-${index}`}
@@ -256,15 +292,14 @@ export default function Features() {
               <motion.div
                 className="group border-secondary/40 text-card-foreground relative col-span-12 flex flex-col overflow-hidden rounded-xl border-2 p-6 shadow-xl transition-all ease-in-out md:col-span-6 xl:col-span-6 xl:col-start-8"
                 ref={ref}
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
                 transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
                 whileHover={{
                   scale: 1.02,
-                  borderColor: "rgba(115, 115, 115, 0.6)",
-                  boxShadow: "0 0 30px rgba(115, 115, 115, 0.2)",
-                  transition: { duration: 0.3 },
+                  transition: { duration: 0.3, ease: "easeOut" },
                 }}
+                style={{ willChange: "transform" }}
               >
                 <div className="flex flex-col gap-4">
                   <h3 className="text-2xl leading-none font-semibold tracking-tight">Decentralization</h3>
@@ -309,15 +344,14 @@ export default function Features() {
               {/* Pyth Oracle card */}
               <motion.div
                 className="group border-secondary/40 text-card-foreground relative col-span-12 flex flex-col overflow-hidden rounded-xl border-2 p-6 shadow-xl transition-all ease-in-out md:col-span-6 xl:col-span-6 xl:col-start-2"
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
                 transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
                 whileHover={{
                   scale: 1.02,
-                  borderColor: "rgba(115, 115, 115, 0.6)",
-                  boxShadow: "0 0 30px rgba(115, 115, 115, 0.2)",
-                  transition: { duration: 0.3 },
+                  transition: { duration: 0.3, ease: "easeOut" },
                 }}
+                style={{ willChange: "transform" }}
               >
                 <div className="flex flex-col gap-4">
                   <h3 className="text-2xl leading-none font-semibold tracking-tight">Pyth Oracle</h3>
@@ -339,15 +373,14 @@ export default function Features() {
               {/* Dynamic Layouts */}
               <motion.div
                 className="group border-secondary/40 text-card-foreground relative col-span-12 flex flex-col overflow-hidden rounded-xl border-2 p-6 shadow-xl transition-all ease-in-out md:col-span-6 xl:col-span-6 xl:col-start-8"
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.95 }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
                 transition={{ duration: 0.6, delay: 0.5, ease: "easeOut" }}
                 whileHover={{
                   scale: 1.02,
-                  borderColor: "rgba(115, 115, 115, 0.6)",
-                  boxShadow: "0 0 30px rgba(115, 115, 115, 0.2)",
-                  transition: { duration: 0.3 },
+                  transition: { duration: 0.3, ease: "easeOut" },
                 }}
+                style={{ willChange: "transform" }}
               >
                 <div className="flex flex-col gap-4">
                   <h3 className="text-2xl leading-none font-semibold tracking-tight">Resolve Markets & Earn Rewards</h3>

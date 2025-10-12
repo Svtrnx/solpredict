@@ -1,7 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Copy, Shield, Star, Flame } from "lucide-react"
+
+import { Copy, Shield, Star, Flame, TrendingUp, History, Trophy } from "lucide-react"
+import type { Achievement } from "@/lib/achievements-data"
+import { useBetsQuery } from "@/hooks/useBetsQuery"
 import { motion } from "framer-motion"
 
 import { DashboardSkeleton, ProfileActiveBetsSkeleton } from "@/components/ui/dashboard-skeleton"
@@ -10,6 +13,7 @@ import { HistoryBetsTab } from "@/components/shared/history-tab"
 import AchievementIcons from "@/components/ui/achievement-icons"
 import { StatsCard } from "@/components/shared/stats-card"
 
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -20,9 +24,6 @@ import { Button } from "@/components/ui/button"
 import { TIERS } from "@/lib/constants/profile"
 import { Badge } from "@/components/ui/badge"
 import { getLevelColor } from "@/lib/utils"
-
-import { useBetsQuery } from "@/hooks/useBetsQuery"
-import type { Achievement } from "@/lib/achievements-data"
 
 // -------------------- Types --------------------
 
@@ -101,8 +102,8 @@ export default function ProfileScreen({
   const activeQ = useBetsQuery({ wallet, kind: "active", pageSize: 10 })
   const historyQ = useBetsQuery({ wallet, kind: "history", pageSize: 10 })
 
-  const activeItems = useMemo(() => activeQ.data?.pages.flatMap((p) => p.items) ?? [], [activeQ.data])
-  const historyItems = useMemo(() => historyQ.data?.pages.flatMap((p) => p.items) ?? [], [historyQ.data])
+  const activeItems = useMemo(() => activeQ.data?.pages.flatMap((p: any) => p.items) ?? [], [activeQ.data])
+  const historyItems = useMemo(() => historyQ.data?.pages.flatMap((p: any) => p.items) ?? [], [historyQ.data])
 
   const [achievements, setAchievements] = useState<Achievement[]>([])
   const [activeTab, setActiveTab] = useState<"active" | "history" | "achievements">("active")
@@ -252,11 +253,7 @@ export default function ProfileScreen({
                         </div>
 
                         <div
-                          className={`
-                            flex items-center justify-between text-sm rounded-md px-4 py-2.5 border
-                            transition-all duration-300
-                            ${getStreakStyle(user.streak)}
-                          `}
+                          className={`flex items-center justify-between text-sm rounded-md px-4 py-2.5 border transition-all duration-300 ${getStreakStyle(user.streak)}`}
                         >
                           <span className="text-muted-foreground font-medium">Win Streak</span>
                           <div className="flex items-center gap-2.5">
@@ -327,7 +324,27 @@ export default function ProfileScreen({
                 {activeQ.isLoading && activeItems.length === 0 ? (
                   <ProfileActiveBetsSkeleton />
                 ) : sortedActiveBets.length === 0 ? (
-                  <div>No bets yet</div>
+                  <Empty className="glass border-dashed">
+                    <EmptyHeader>
+                      <EmptyMedia>
+                        <TrendingUp className="h-12 w-12 text-muted-foreground" />
+                      </EmptyMedia>
+                      <EmptyTitle>No Active Bets</EmptyTitle>
+                      <EmptyDescription>
+                        {isOwner
+                          ? "You don't have any active bets yet. Start placing bets to see them here."
+                          : "This user doesn't have any active bets at the moment."}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    {isOwner && (
+                      <EmptyContent>
+                        <Button className="cursor-pointer">
+                          <TrendingUp className="w-4 h-4" />
+                          Explore Markets
+                        </Button>
+                      </EmptyContent>
+                    )}
+                  </Empty>
                 ) : (
                   <>
                     <ActiveBetsTab activeBets={sortedActiveBets} isOwner={isOwner} />
@@ -359,6 +376,20 @@ export default function ProfileScreen({
                       </Card>
                     ))}
                   </div>
+                ) : historyItems.length === 0 ? (
+                  <Empty className="glass border-dashed">
+                    <EmptyHeader>
+                      <EmptyMedia>
+                        <History className="h-12 w-12 text-muted-foreground" />
+                      </EmptyMedia>
+                      <EmptyTitle>No Bet History</EmptyTitle>
+                      <EmptyDescription>
+                        {isOwner
+                          ? "Your completed bets will appear here once they're resolved."
+                          : "This user hasn't completed any bets yet."}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 ) : (
                   <>
                     <HistoryBetsTab historyBets={historyItems} />
@@ -378,132 +409,156 @@ export default function ProfileScreen({
                   <p className="text-muted-foreground">Collect badges and NFTs as you master the art of prediction</p>
                 </motion.div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {achievements.map((badge, index) => {
-                    const IconComponent = badge.icon
-                    return (
-                      <motion.div
-                        key={badge.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: index * 0.05 }}
-                      >
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Card
-                              className={`glass transition-all duration-300 cursor-pointer group ${
-                                badge.earned
-                                  ? "glow hover:glow-cyan transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/20"
-                                  : "opacity-50 hover:opacity-75"
-                              }`}
-                            >
-                              <CardContent className="pt-6 text-center relative">
-                                {badge.earned && (
-                                  <div className="absolute top-2 right-2">
-                                    <div className="flex items-center space-x-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 px-2 py-1 rounded-full border border-purple-500/30">
-                                      <Shield className="w-3 h-3 text-purple-400" />
-                                      <span className="text-xs text-purple-400 font-medium">NFT</span>
+                {achievements.length === 0 ? (
+                  <Empty className="glass border-dashed">
+                    <EmptyHeader>
+                      <EmptyMedia>
+                        <Trophy className="h-12 w-12 text-muted-foreground" />
+                      </EmptyMedia>
+                      <EmptyTitle>No Achievements Yet</EmptyTitle>
+                      <EmptyDescription>
+                        {isOwner
+                          ? "Start placing bets and winning to unlock exclusive achievement badges and NFTs."
+                          : "This user hasn't unlocked any achievements yet."}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    {isOwner && (
+                      <EmptyContent>
+                        <Button variant="outline">
+                          <Trophy className="w-4 h-4" />
+                          View All Achievements
+                        </Button>
+                      </EmptyContent>
+                    )}
+                  </Empty>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {achievements.map((badge, index) => {
+                      const IconComponent = badge.icon
+                      return (
+                        <motion.div
+                          key={badge.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.5, delay: index * 0.05 }}
+                        >
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Card
+                                className={`glass transition-all duration-300 cursor-pointer group ${
+                                  badge.earned
+                                    ? "glow hover:glow-cyan transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/20"
+                                    : "opacity-50 hover:opacity-75"
+                                }`}
+                              >
+                                <CardContent className="pt-6 text-center relative">
+                                  {badge.earned && (
+                                    <div className="absolute top-2 right-2">
+                                      <div className="flex items-center space-x-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 px-2 py-1 rounded-full border border-purple-500/30">
+                                        <Shield className="w-3 h-3 text-purple-400" />
+                                        <span className="text-xs text-purple-400 font-medium">NFT</span>
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-
-                                <div
-                                  className={`w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center relative ${
-                                    badge.earned ? `bg-gradient-to-r ${badge.gradient} glow` : "bg-muted"
-                                  }`}
-                                >
-                                  {badge.earned ? (
-                                    <IconComponent className="w-10 h-10 text-white relative z-10" />
-                                  ) : (
-                                    <IconComponent className="w-10 h-10 text-muted-foreground" />
                                   )}
-                                </div>
 
-                                <h3 className="font-semibold mb-1 group-hover:text-cyan-400 transition-colors duration-300">
-                                  {badge.name}
-                                </h3>
-                                <p className="text-sm text-muted-foreground mb-2">{badge.description}</p>
-                                <Badge
-                                  variant="outline"
-                                  className={`${
-                                    badge.earned
-                                      ? `bg-gradient-to-r ${badge.gradient} text-white border-transparent`
-                                      : "glass"
-                                  }`}
-                                >
-                                  <Star className="w-3 h-3 mr-1" />
-                                  {badge.rarity}
-                                </Badge>
-                              </CardContent>
-                            </Card>
-                          </DialogTrigger>
-
-                          <DialogContent className="glass max-w-md mx-auto">
-                            <DialogHeader>
-                              <DialogTitle className="text-center">
-                                <div className="flex flex-col items-center space-y-4">
                                   <div
-                                    className={`w-24 h-24 rounded-full flex items-center justify-center relative ${
+                                    className={`w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center relative ${
                                       badge.earned ? `bg-gradient-to-r ${badge.gradient} glow` : "bg-muted"
                                     }`}
                                   >
                                     {badge.earned ? (
-                                      <IconComponent className="w-12 h-12 text-white" />
+                                      <IconComponent className="w-10 h-10 text-white relative z-10" />
                                     ) : (
-                                      <IconComponent className="w-12 h-12 text-muted-foreground" />
-                                    )}
-                                    {badge.earned && (
-                                      <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                                      <IconComponent className="w-10 h-10 text-muted-foreground" />
                                     )}
                                   </div>
-                                  <div className="space-y-2">
-                                    <h3 className="text-xl font-bold">{badge.name}</h3>
-                                    <Badge
-                                      variant="outline"
-                                      className={`${getRarityColor(badge.rarity)} border-current`}
+
+                                  <h3 className="font-semibold mb-1 group-hover:text-cyan-400 transition-colors duration-300">
+                                    {badge.name}
+                                  </h3>
+                                  <p className="text-sm text-muted-foreground mb-2">{badge.description}</p>
+                                  <Badge
+                                    variant="outline"
+                                    className={`${
+                                      badge.earned
+                                        ? `bg-gradient-to-r ${badge.gradient} text-white border-transparent`
+                                        : "glass"
+                                    }`}
+                                  >
+                                    <Star className="w-3 h-3 mr-1" />
+                                    {badge.rarity}
+                                  </Badge>
+                                </CardContent>
+                              </Card>
+                            </DialogTrigger>
+
+                            <DialogContent className="glass max-w-md mx-auto">
+                              <DialogHeader>
+                                <DialogTitle className="text-center">
+                                  <div className="flex flex-col items-center space-y-4">
+                                    <div
+                                      className={`w-24 h-24 rounded-full flex items-center justify-center relative ${
+                                        badge.earned ? `bg-gradient-to-r ${badge.gradient} glow` : "bg-muted"
+                                      }`}
                                     >
-                                      <Star className="w-3 h-3 mr-1" />
-                                      {badge.rarity}
-                                    </Badge>
+                                      {badge.earned ? (
+                                        <IconComponent className="w-12 h-12 text-white" />
+                                      ) : (
+                                        <IconComponent className="w-12 h-12 text-muted-foreground" />
+                                      )}
+                                      {badge.earned && (
+                                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                                      )}
+                                    </div>
+                                    <div className="space-y-2">
+                                      <h3 className="text-xl font-bold">{badge.name}</h3>
+                                      <Badge
+                                        variant="outline"
+                                        className={`${getRarityColor(badge.rarity)} border-current`}
+                                      >
+                                        <Star className="w-3 h-3 mr-1" />
+                                        {badge.rarity}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </DialogTitle>
+                              </DialogHeader>
+
+                              <div className="space-y-4 text-center">
+                                <p className="text-muted-foreground">{badge.detailedDescription}</p>
+
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div className="space-y-1">
+                                    <div className="text-muted-foreground">Unlocked by</div>
+                                    <div className="font-semibold text-accent">{badge.unlockedBy} of players</div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <div className="text-muted-foreground">NFT ID</div>
+                                    <div className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">{badge.nftId}</div>
                                   </div>
                                 </div>
-                              </DialogTitle>
-                            </DialogHeader>
 
-                            <div className="space-y-4 text-center">
-                              <p className="text-muted-foreground">{badge.detailedDescription}</p>
+                                {badge.earned && badge.earnedDate && (
+                                  <div className="pt-2 border-t border-muted">
+                                    <div className="text-sm text-muted-foreground">Earned on</div>
+                                    <div className="font-semibold text-accent">{badge.earnedDate}</div>
+                                  </div>
+                                )}
 
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div className="space-y-1">
-                                  <div className="text-muted-foreground">Unlocked by</div>
-                                  <div className="font-semibold text-accent">{badge.unlockedBy} of players</div>
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="text-muted-foreground">NFT ID</div>
-                                  <div className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">{badge.nftId}</div>
-                                </div>
+                                {!badge.earned && (
+                                  <div className="pt-2 border-t border-muted">
+                                    <div className="text-sm text-muted-foreground">Status</div>
+                                    <div className="font-semibold text-yellow-400">Not yet unlocked</div>
+                                  </div>
+                                )}
                               </div>
-
-                              {badge.earned && badge.earnedDate && (
-                                <div className="pt-2 border-t border-muted">
-                                  <div className="text-sm text-muted-foreground">Earned on</div>
-                                  <div className="font-semibold text-accent">{badge.earnedDate}</div>
-                                </div>
-                              )}
-
-                              {!badge.earned && (
-                                <div className="pt-2 border-t border-muted">
-                                  <div className="text-sm text-muted-foreground">Status</div>
-                                  <div className="font-semibold text-yellow-400">Not yet unlocked</div>
-                                </div>
-                              )}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </motion.div>
-                    )
-                  })}
-                </div>
+                            </DialogContent>
+                          </Dialog>
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </motion.div>
