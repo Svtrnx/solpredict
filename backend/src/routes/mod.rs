@@ -59,7 +59,6 @@ pub fn build(state: SharedState) -> Router {
     let protected_v1 = Router::new()
         .route("/profile/overview", get(handlers::profile::profile::wallet_overview))
         .route("/admin/metadata", post(handlers::metadata::set_token_metadata))
-        .route("/ai/probability", get(handlers::ai::get_probability))
         .route("/health", get(handlers::health::health))
         .merge(handlers::market::protected_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_user));
