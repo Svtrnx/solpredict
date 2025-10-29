@@ -1,4 +1,4 @@
-use solpredict::solana::anchor_client;
+use solpredict::solana as anchor_client_;
 use solpredict::telemetry;
 use solpredict::config;
 use solpredict::routes;
@@ -6,6 +6,7 @@ use solpredict::state;
 use solpredict::db;
 
 use std::{env, net::SocketAddr};
+use anyhow::Context;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -19,8 +20,14 @@ async fn main() -> anyhow::Result<()> {
 
     let db = db::init_pool(&settings.database.url).await?;
 
+    let redis_url = std::env::var("APP__REDIS__URL")
+        .or_else(|_| std::env::var("REDIS_URL"))
+        .context("Set APP__REDIS__URL rediss:// URL")?;
+
+    let redis = db::init_redis_from_url(&redis_url).await?;
+
     // Connect Anchor client (Solana devnet)
-    let anchor = anchor_client::connect_devnet()?;
+    let anchor = anchor_client_::connect_devnet()?;
 
     // SIWS
     let siws_domain = env::var("SIWS_DOMAIN").unwrap_or_else(|_| "localhost:3000".into());
@@ -34,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
         siws_uri.clone(),
         jwt_secret,
         db,
+        redis,
         Arc::new(anchor),
     );
 

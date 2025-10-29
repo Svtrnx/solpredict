@@ -8,7 +8,7 @@ use anyhow::anyhow;
 
 use crate::{
 	error::AppError, middleware::auth::CurrentUser, 
-	repo::market as market_repo, solana::anchor_client as anchor_client_, 
+	repo::market as market_repo, solana as anchor_client_, 
 	state::SharedState
 };
 

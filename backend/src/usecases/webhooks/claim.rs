@@ -5,7 +5,7 @@ use anyhow::anyhow;
 
 use crate::{
     usecases::webhooks::shared::{extract_sig, extract_fee_payer, accounts_str_and_idx},
-    solana::anchor_client as anchor_client_,
+    solana as anchor_client_,
     repo::bets as bets_repo,
     error::AppError,
     state,

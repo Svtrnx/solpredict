@@ -46,6 +46,7 @@ impl From<&pos_repo::PositionRow> for TitleSpec {
 
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Claims {
     sub: String,
     wallet: String,

@@ -2,6 +2,7 @@ use base64::{Engine as _, engine::general_purpose};
 use sqlx::{PgPool, Row, postgres::PgRow};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::handlers::market::types::{Comparator, CreateMarketRequest, MarketCategory, MarketType};
@@ -9,6 +10,28 @@ use crate::handlers::market::types::{Comparator, CreateMarketRequest, MarketCate
 #[derive(Debug, sqlx::FromRow)]
 pub struct MarketRowInsert {
     pub id: uuid::Uuid,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MarketKind {
+    Pyth,
+    Ai,
+}
+
+#[derive(Debug, Clone)]
+pub struct AiResolverInput {
+    pub ai_topic: String,
+    pub ai_description: String,
+    pub ai_criteria_md: String,
+    pub ai_accepted_sources: Vec<String>,
+    pub end_date_utc: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+fn market_kind_str(k: MarketKind) -> &'static str {
+    match k {
+        MarketKind::Pyth => "pyth",
+        MarketKind::Ai => "ai",
+    }
 }
 
 pub struct MarketRowFetch {
@@ -20,7 +43,7 @@ pub struct MarketRowFetch {
     pub price_yes_bp: Option<i32>,
     pub end_date_utc: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub symbol: String,
+    pub symbol: Option<String>,
     pub market_type: String,
     pub comparator: Option<String>,
     pub bound_lo_1e6: Option<i64>,
@@ -34,16 +57,20 @@ pub struct MarketRow {
     pub market_pda: String,
     pub creator: String,
     pub category: String,
-    pub feed_id: String,
-    pub symbol: String,
+
+    pub feed_id: Option<String>,
+    pub symbol: Option<String>,
+
     pub end_date_utc: chrono::DateTime<chrono::Utc>,
 
     pub market_type: String,
+    pub market_kind: Option<String>,
     pub comparator: Option<String>,
     pub bound_lo_1e6: Option<i64>,
     pub bound_hi_1e6: Option<i64>,
 
-    pub initial_liquidity_1e6: i64,
+    pub initial_liquidity_1e6: Option<i64>,
+
     pub yes_total_1e6: i64,
     pub no_total_1e6: i64,
     pub total_volume_1e6: i64,
@@ -52,7 +79,9 @@ pub struct MarketRow {
     pub price_yes_bp: Option<i32>,
     pub status: String,
     pub resolver_pubkey: Option<String>,
+    pub ai_topic: Option<String>,
 }
+
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MarketViewRow {
@@ -129,19 +158,22 @@ pub async fn insert_confirmed_market(
     let id = sqlx::query_scalar!(
         r#"
         INSERT INTO markets (
+          market_kind,
           market_pda, authority_pubkey, tx_sig_create,
           category, symbol,
           market_type, comparator, bound_lo_1e6, bound_hi_1e6, end_date_utc,
           feed_id, price_feed_account, mint,
           initial_liquidity_1e6
         )
-        VALUES ($1,$2,$3,
-                $4,$5,
-                $6,$7,$8,$9,$10::timestamptz,
-                $11,$12,$13,
-                $14)
+        VALUES ($1,
+                $2,$3,$4,
+                $5,$6,
+                $7,$8,$9,$10,$11::timestamptz,
+                $12,$13,$14,
+                $15)
         RETURNING id
         "#,
+        market_kind_str(MarketKind::Pyth),
         market_pda,
         authority_pubkey,
         tx_sig_create,
@@ -151,7 +183,7 @@ pub async fn insert_confirmed_market(
         comparator_str(req.comparator),
         bound_lo_1e6,
         bound_hi_1e6,
-        req.end_date, 
+        req.end_date,
         req.feed_id,
         price_feed_account,
         mint,
@@ -162,6 +194,67 @@ pub async fn insert_confirmed_market(
 
     Ok(id)
 }
+
+pub async fn insert_confirmed_market_ai(
+    pool: &sqlx::PgPool,
+    market_pda: &str,
+    authority_pubkey: &str,
+    tx_sig_create: &str,
+    category_text: &str,
+    end_date_utc: OffsetDateTime,
+    ai_job_hash: &str,
+    ai_proposal_id: &str,
+    ai_topic: &str,
+    ai_description: &str,
+    ai_criteria_md: &str,
+    ai_accepted_sources: &Vec<String>,
+    ai_short_text: &str,
+) -> anyhow::Result<Uuid> {
+    let market_type = "multi";
+    let symbol = "AI";
+
+    let id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO markets (
+          market_kind,
+          market_type,
+          market_pda, authority_pubkey, tx_sig_create,
+          category, end_date_utc,
+          ai_job_hash, ai_proposal_id, ai_topic, ai_description, ai_criteria_md, ai_accepted_sources, ai_short_text,
+          symbol
+        )
+        VALUES (
+          $1,
+          $2,
+          $3, $4, $5,
+          $6, $7::timestamptz,
+          $8, $9, $10, $11, $12, $13, $14,
+          $15
+        )
+        RETURNING id
+        "#,
+        market_kind_str(MarketKind::Ai),
+        market_type,
+        market_pda,
+        authority_pubkey,
+        tx_sig_create,
+        category_text,
+        end_date_utc,
+        ai_job_hash,
+        ai_proposal_id,
+        ai_topic,
+        ai_description,
+        ai_criteria_md,
+        serde_json::Value::from(ai_accepted_sources.clone()),
+        ai_short_text,
+        symbol
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(id)
+}
+
 
 pub async fn upsert_initial_state(
     pool: &sqlx::PgPool,
@@ -407,16 +500,17 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
             market_pda                  AS "market_pda!",
             creator                     AS "creator!",
             category                    AS "category!",
-            symbol                      AS "symbol!",
-            feed_id                     AS "feed_id!",
+            symbol                      AS "symbol?",
+            feed_id                     AS "feed_id?",
             end_date_utc                AS "end_date_utc!: chrono::DateTime<chrono::Utc>",
 
             market_type                 AS "market_type!",
+            market_kind                 AS "market_kind?",
             comparator                  AS "comparator?",
             bound_lo_1e6                AS "bound_lo_1e6?: i64",
             bound_hi_1e6                AS "bound_hi_1e6?: i64",
 
-            initial_liquidity_1e6       AS "initial_liquidity_1e6!: i64",
+            initial_liquidity_1e6       AS "initial_liquidity_1e6?: i64",
             yes_total_1e6               AS "yes_total_1e6!: i64",
             no_total_1e6                AS "no_total_1e6!: i64",
             total_volume_1e6            AS "total_volume_1e6!: i64",
@@ -424,7 +518,8 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
 
             price_yes_bp                AS "price_yes_bp?: i32",
             status                      AS "status!",
-            resolver_pubkey             AS "resolver_pubkey?"
+            resolver_pubkey             AS "resolver_pubkey?",
+            ai_topic                    AS "ai_topic?"
         FROM market_view
         WHERE market_pda = $1
         "#,
@@ -432,7 +527,6 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
     )
     .fetch_optional(pool)
     .await?;
-
     Ok(row)
 }
 
@@ -534,4 +628,32 @@ pub async fn confirm_resolve_persist(
         payout_pool_1e6: r.try_get::<Option<i64>, _>("payout_pool_1e6")?,
         tx_sig_resolve: r.try_get::<Option<String>, _>("tx_sig_resolve")?,
     })
+}
+
+
+pub async fn fetch_ai_resolver_input_by_pda(pool: &PgPool, market_pda: &str) -> Result<Option<AiResolverInput>> {
+    let row = sqlx::query!(
+        r#"
+        SELECT
+          ai_topic                        AS "ai_topic?",
+          ai_description                  AS "ai_description?",
+          ai_criteria_md                  AS "ai_criteria_md?",
+          ai_accepted_sources             AS "ai_accepted_sources?: sqlx::types::Json<Vec<String>>",
+          end_date_utc                    AS "end_date_utc?: chrono::DateTime<chrono::Utc>"
+        FROM market_view
+        WHERE market_pda = $1
+        LIMIT 1
+        "#,
+        market_pda
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| AiResolverInput {
+        ai_topic: r.ai_topic.unwrap_or_default(),
+        ai_description: r.ai_description.unwrap_or_default(),
+        ai_criteria_md: r.ai_criteria_md.unwrap_or_default(),
+        ai_accepted_sources: r.ai_accepted_sources.map(|j| j.0).unwrap_or_default(),
+        end_date_utc: r.end_date_utc,
+    }))
 }

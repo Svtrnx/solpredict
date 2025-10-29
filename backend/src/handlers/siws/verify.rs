@@ -1,5 +1,5 @@
 use jsonwebtoken::{EncodingKey, Header, encode};
-use anchor_client::{solana_sdk::pubkey::Pubkey, anchor_lang::prelude::Pubkey as AnchorPubkey};
+use anchor_client::{solana_sdk::pubkey::Pubkey};
 use time::{Duration, OffsetDateTime};
 use cookie::{Cookie, SameSite};
 use std::str::FromStr;
@@ -19,7 +19,7 @@ use siws::{
 };
 
 use crate::{
-    solana::anchor_client as anchor_client_, 
+    solana as anchor_client_, 
     repo::users,
     state::SharedState,
 };

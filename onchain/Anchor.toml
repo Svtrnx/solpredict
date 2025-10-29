@@ -8,5 +8,8 @@ prediction_market = "HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ"
 cluster = "devnet"
 wallet  = "~/.config/solana/id.json"
 
+[toolchain]
+anchor_version = "0.31.1"
+
 [build]
 rust = true

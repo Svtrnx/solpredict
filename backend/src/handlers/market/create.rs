@@ -1,15 +1,14 @@
 use axum::{Json, extract::State, http::HeaderMap, http::StatusCode};
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use time::{Duration, OffsetDateTime};
-use validator::Validate;
 use serde::{Serialize};
+use validator::Validate;
 use anyhow::anyhow;
-
 use crate::{
     handlers::market::types::{Comparator, CreateMarketRequest, MarketType, 
         SeedSide, current_user_pubkey, cat_str, cmp_str, feed_id_hex_to_bytes32,
         usd_to_1e6},
-    solana::anchor_client as anchor_client_,
+    solana as anchor_client_,
     state::SharedState,
     error::AppError,
 };
@@ -60,8 +59,8 @@ pub async fn create_market(
 
     // Map request into on-chain formats
     let market_type_onchain = match req.market_type {
-        MarketType::PriceThreshold => onchain::MarketType::PriceThreshold,
-        MarketType::PriceRange => onchain::MarketType::PriceRange,
+        MarketType::PriceThreshold => onchain::types::MarketType::PriceThreshold,
+        MarketType::PriceRange => onchain::types::MarketType::PriceRange,
     };
     let comparator_u8 = map_comparator(req.comparator);
 
@@ -93,8 +92,8 @@ pub async fn create_market(
     let amount_tokens: u64 = (req.initial_liquidity * 1_000_000.0).round() as u64;
 
     let side_onchain = match req.initial_side {
-        SeedSide::Yes => onchain::Side::Yes,
-        SeedSide::No => onchain::Side::No,
+        SeedSide::Yes => onchain::types::Side::Yes,
+        SeedSide::No => onchain::types::Side::No,
     };
 
     let memo_str = serde_urlencoded::to_string([

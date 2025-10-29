@@ -1,6 +1,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use axum_extra::extract::cookie::Cookie;
 use serde::Deserialize;
+use uuid::Uuid;
 
 use axum::{
     http::{Request, StatusCode, header},
@@ -13,6 +14,7 @@ use axum::{
 use crate::{state::SharedState, repo::users::exists_user_wallet};
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Claims {
     sub: String,       // user_id (UUID)
     wallet: String,    // base58 address
@@ -69,10 +71,21 @@ pub async fn require_user(
     };
     let claims = data.claims;
 
+    // Parse UUIDs from strings
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::UNAUTHORIZED, "invalid user_id format").into_response(),
+    };
+
+    let wallet_id = match Uuid::parse_str(&claims.wallet_id) {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::UNAUTHORIZED, "invalid wallet_id format").into_response(),
+    };
+
     match exists_user_wallet(
         state.db.pool(),
-        &claims.sub,
-        &claims.wallet_id,
+        user_id,
+        wallet_id,
         &claims.wallet,
     )
     .await

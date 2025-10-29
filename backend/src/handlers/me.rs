@@ -16,8 +16,8 @@ struct Claims {
 #[derive(Serialize)]
 struct MeUser {
     id: String,
-    walletAddress: String,
-    walletId: String,
+    wallet_address: String,
+    wallet_id: String,
     chain: &'static str,
     exp: usize,
 }
@@ -33,17 +33,17 @@ struct MeResponse {
 pub struct MeOverviewResponse {
     ok: bool,
     address: String,
-    totalVolume: f64,
-    totalBets: i64,
-    activeBets: i64,
-    winRate: f64,
-    winRateChange: f64,
+    total_volume: f64,
+    total_bets: i64,
+    active_bets: i64,
+    win_rate: f64,
+    win_rate_change: f64,
     rank: i64,
-    rankChange: i64,
+    rank_change: i64,
     level: String,
     points: i64,
     streak: i64,
-    joinDate: String,
+    join_date: String,
 }
 
 // ====== GET /v1/auth/me ======
@@ -72,8 +72,8 @@ pub async fn me(State(state): State<SharedState>, jar: CookieJar) -> impl IntoRe
         ok: true,
         user: MeUser {
             id: claims.sub,
-            walletAddress: claims.wallet,
-            walletId: claims.wallet_id,
+            wallet_address: claims.wallet,
+            wallet_id: claims.wallet_id,
             chain: "solana",
             exp: claims.exp,
         },

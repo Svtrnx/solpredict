@@ -5,7 +5,7 @@ use crate::usecases::webhooks::handle_helius_raw_item;
 
 // ====== POST /v1/webhooks/helius ======
 
-pub async fn helius(
+pub async fn helius_webhook(
     _headers: HeaderMap,
     Json(body): Json<Value>
 ) -> Result<Json<Value>, StatusCode> {

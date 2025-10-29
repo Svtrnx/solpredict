@@ -79,8 +79,13 @@ pub struct MarketDto {
     pub no_total_volume: f64,
     pub participants: i32,
     pub end_date: String,
-    pub symbol: String,
-    pub feed_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_id: Option<String>,
+
     pub category: String,
     pub creator: String,
     pub settler: Option<String>,
@@ -141,7 +146,7 @@ fn validate_market_fields(req: &CreateMarketRequest) -> Result<(), ValidationErr
 }
 
 pub struct TitleSpec {
-    pub symbol: String,
+    pub symbol: Option<String>,
     pub end_date_utc: DateTime<Utc>,
     pub market_type: Option<String>,
     pub comparator: Option<String>,
@@ -154,7 +159,9 @@ pub fn usd_to_1e6(x: f64) -> i64 {
 }
 
 pub fn generate_title(s: &TitleSpec) -> String {
-    let symbol_trimmed = s.symbol.strip_prefix("Crypto.").unwrap_or(&s.symbol);
+    let sym = s.symbol.as_deref().unwrap_or("AI");
+
+    let symbol_trimmed = sym.strip_prefix("Crypto.").unwrap_or(sym);
     let date_str = s.end_date_utc.format("%b %d, %Y").to_string();
 
     match s.market_type.as_deref().unwrap_or("price-threshold") {
@@ -188,7 +195,7 @@ pub fn generate_title(s: &TitleSpec) -> String {
 impl From<&MarketRow> for TitleSpec {
     fn from(r: &MarketRow) -> Self {
         TitleSpec {
-            symbol: r.symbol.clone(),
+            symbol: r.symbol.clone(), 
             end_date_utc: r.end_date_utc,
             market_type: Some(r.market_type.clone()),
             comparator: r.comparator.clone(),
@@ -201,6 +208,7 @@ impl From<&MarketRow> for TitleSpec {
 // ========== Mapping Row -> DTO ==========
 impl From<MarketRow> for MarketDto {
     fn from(r: MarketRow) -> Self {
+        // YES/NO цены как было
         let yes = r.price_yes_bp.map(|bp| (bp as f64) / 10_000.0).unwrap_or(0.5);
         let no = (1.0 - yes).max(0.0);
 
@@ -212,7 +220,11 @@ impl From<MarketRow> for MarketDto {
             _ => MarketStatusDto::Open,
         };
 
-        let title = generate_title(&TitleSpec::from(&r));
+        let title = if r.market_kind.as_deref() == Some("ai") {
+            r.ai_topic.clone().unwrap_or_else(|| generate_title(&TitleSpec::from(&r)))
+        } else {
+            generate_title(&TitleSpec::from(&r))
+        };
 
         MarketDto {
             id: r.id.to_string(),
@@ -222,10 +234,10 @@ impl From<MarketRow> for MarketDto {
 
             yes_total_volume: (r.yes_total_1e6 as f64) / 1_000_000.0,
             no_total_volume: (r.no_total_1e6 as f64) / 1_000_000.0,
-
             total_volume: (r.total_volume_1e6 as f64) / 1_000_000.0,
 
             participants: r.participants,
+
             symbol: r.symbol,
             feed_id: r.feed_id,
             end_date: r.end_date_utc.to_rfc3339(),
@@ -236,6 +248,7 @@ impl From<MarketRow> for MarketDto {
         }
     }
 }
+
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0

@@ -48,7 +48,6 @@ pub fn build(state: SharedState) -> Router {
     let public_v1 = Router::new()
         .route("/profile/{wallet}", get(handlers::profile::profile::wallet_overview_public))
         .route("/profile/bets", get(handlers::profile::bets::list_bets_public))
-        .route("/webhooks/helius", post(handlers::webhooks::helius::helius))
         .route("/auth/nonce", get(handlers::siws::nonce::get_nonce))
         .route("/auth/verify", post(handlers::siws::verify::verify))
         .route("/leaderboard", get(handlers::leaderboard::handle))
@@ -63,8 +62,10 @@ pub fn build(state: SharedState) -> Router {
         .merge(handlers::market::protected_routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_user));
 
-    Router::new()
+Router::new()
         .route("/", get(handlers::root::index))
+        .route("/v1/webhooks/ai/propose", post(handlers::webhooks::ai_propose::ai_propose_webhook))
+        .route("/v1/webhooks/helius", post(handlers::webhooks::helius::helius_webhook))
         .nest("/v1", public_v1.merge(protected_v1))
         .with_state(state)
         .layer(TimeoutLayer::new(Duration::from_secs(10)))

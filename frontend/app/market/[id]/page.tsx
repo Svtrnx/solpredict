@@ -39,6 +39,17 @@ interface PayoutCalculation {
   profit: number
 }
 
+type Side = "yes" | "no"
+
+function toOutcomeIdx(side: Side): 0 | 1 {
+  return side === "yes" ? 0 : 1
+}
+
+function didYesWin(market: Market): boolean {
+  // When settled, yesPrice will be 1 if yes won, 0 if no won
+  return market.yesPrice === 1
+}
+
 function CountdownTimer({ endAt }: { endAt: string }) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => diff(endAt))
 
@@ -145,7 +156,6 @@ export default function MarketPage() {
   const dispatch = useAppDispatch()
 
   const isMobile = useMobile()
-  const router = useRouter()
   const { isAuthorized } = useAppSelector((state) => state.wallet)
   const { id: raw } = useParams<{ id: string | string[] }>()
   const market_pda = Array.isArray(raw) ? raw[0] : (raw ?? "")
@@ -266,7 +276,7 @@ export default function MarketPage() {
 
       const prep = await prepareBet({
         market_pda: market_pda,
-        side: selectedSide,
+        outcome_idx: toOutcomeIdx(selectedSide),
         amount_ui: amount,
       })
 
@@ -653,12 +663,12 @@ export default function MarketPage() {
                             <Badge
                               className={cn(
                                 "text-sm font-bold",
-                                market.yesPrice === 1
+                                didYesWin(market)
                                   ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                                   : "bg-rose-500/20 text-rose-400 border-rose-500/30",
                               )}
                             >
-                              {market.yesPrice === 1 ? "YES" : "NO"}
+                              {didYesWin(market) ? "YES" : "NO"}
                             </Badge>
                           </div>
                           <div className="h-px bg-border/50"></div>
@@ -763,7 +773,7 @@ export default function MarketPage() {
                       </div>
                       <div className="space-y-2">
                         <h3 className="text-xl font-bold gradient-text">Earn Resolver Fee</h3>
-                        <p className="text-sm text-muted-foreground max-w-sm">
+                        <p className="text-sm text-muted-foreground max-sm">
                           This market has ended and needs to be resolved. Connect your wallet to resolve this market and
                           earn the resolver fee.
                         </p>
@@ -804,7 +814,7 @@ export default function MarketPage() {
                       </div>
                       <div className="space-y-2">
                         <h3 className="text-xl font-bold">Market Locked</h3>
-                        <p className="text-sm text-muted-foreground max-w-sm">
+                        <p className="text-sm text-muted-foreground max-sm">
                           This market is currently locked and not accepting new bets. Connect your wallet to view more
                           details and participate in future markets.
                         </p>
@@ -879,7 +889,7 @@ export default function MarketPage() {
                       </div>
                       <div className="space-y-2">
                         <h3 className="text-xl font-bold">Market Locked</h3>
-                        <p className="text-sm text-muted-foreground max-w-sm">
+                        <p className="text-sm text-muted-foreground max-sm">
                           This market is currently locked and not accepting new bets. The market will be resolved soon
                           based on the outcome.
                         </p>
@@ -898,7 +908,7 @@ export default function MarketPage() {
                 </Card>
               )}
 
-              {isAuthorized && market.status === "open" && !canResolve && (
+              {isAuthorized && (
                 <Card className="glass border-2 border-border/50">
                   <CardHeader className="pb-3 border-b border-border/30 bg-gradient-to-br from-purple-500/5 via-transparent to-transparent">
                     <CardTitle className="flex items-center justify-between text-lg">

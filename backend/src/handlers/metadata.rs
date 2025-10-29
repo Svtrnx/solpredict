@@ -7,7 +7,7 @@ use axum::{
     Json,
 };
 
-use crate::{solana::anchor_client as acli, state::SharedState};
+use crate::{solana as anchor_client_, state::SharedState};
 
 #[derive(Deserialize)]
 pub struct MetadataReq {
@@ -40,8 +40,8 @@ pub async fn set_token_metadata(
     // Run anchor-client to update metadata
     let uri = req.uri.clone();
     let res = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
-        let ctx = acli::connect_devnet()?;
-        let sig = acli::set_token_metadata(&ctx, &uri)?;
+        let ctx = anchor_client_::connect_devnet()?;
+        let sig = anchor_client_::set_token_metadata(&ctx, &uri)?;
         Ok(sig.to_string())
     })
     .await

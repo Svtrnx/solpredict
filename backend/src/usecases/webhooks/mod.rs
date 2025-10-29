@@ -10,7 +10,7 @@ use shared::{anchor_sighash, extract_instructions, ix_program_id};
 use crate::{error::AppError, state};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Method { PlaceBet, CreateMarket, ResolveMarket, Claim, Unknown }
+enum Method { PlaceBet, CreateMarket, CreateMarketMulti, ResolveMarket, Claim, Unknown }
 
 fn detect_method(ix: &Value) -> Method {
     let bytes = match shared::ix_data_bytes(ix) { Some(b) => b, None => return Method::Unknown };
@@ -19,6 +19,8 @@ fn detect_method(ix: &Value) -> Method {
         Method::PlaceBet
     } else if discr == anchor_sighash("create_market") {
         Method::CreateMarket
+    } else if discr == anchor_sighash("create_market_multi") {
+        Method::CreateMarketMulti
     } else if discr == anchor_sighash("resolve_market") {
         Method::ResolveMarket
     } else if discr == anchor_sighash("claim") {
@@ -43,6 +45,11 @@ pub async fn handle_helius_raw_item(item: &Value) -> Result<(), AppError> {
             Method::CreateMarket => {
                 if let Err(e) = create_market::handle(item, ix, msg_keys_opt, &state.memo_program, &state.usdc_mint).await {
                     tracing::error!("create_market error: {e:#?}");
+                }
+            }
+            Method::CreateMarketMulti => {
+                if let Err(e) = create_market::handle_multi(item, ix, msg_keys_opt, &state.memo_program, &state.usdc_mint).await {
+                    tracing::error!("create_market_multi error: {e:#?}");
                 }
             }
             Method::PlaceBet => {

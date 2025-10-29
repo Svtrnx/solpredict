@@ -4,8 +4,9 @@ use once_cell::sync::OnceCell;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
-use crate::solana::anchor_client::AnchorCtx;
+use crate::solana::AnchorCtx;
 use crate::db::Db;
+use redis::Client as RedisClient;
 
 pub struct AppState {
     // ===== SIWS / auth =====
@@ -16,11 +17,13 @@ pub struct AppState {
 
     // ===== Infrastructure =====
     pub db: Db,
+    pub redis: RedisClient,
     pub rpc: RpcClient,
     pub rpc_url: String,
 
     // ===== Solana/Program config =====
     pub program_id: String,
+    pub ai_oracle_pubkey: String,
     pub memo_program: String, 
     pub usdc_mint: String, 
 
@@ -36,6 +39,7 @@ impl AppState {
         uri: impl Into<String>,
         jwt_secret: impl Into<String>,
         db: Db,
+        redis: RedisClient,
         anchor: Arc<AnchorCtx>,
     ) -> SharedState {
         let _ = dotenvy::dotenv();
@@ -46,6 +50,9 @@ impl AppState {
 
         let program_id = std::env::var("PREDICTION_PROGRAM_ID")
             .unwrap_or_else(|_| "HhbBippsA7ETvNMNwBbY7Fg8B24DzgJ3nENetYPwR9bQ".to_string());
+
+        let ai_oracle_pubkey = std::env::var("AI_ORACLE_PUBKEY")
+            .unwrap_or_else(|_| "3c5XAeXx8dCxn3KAVJuu4mXadcZJNFez3xeXKeq8tyTZ".to_string());
 
         let memo_program = std::env::var("MEMO_PROGRAM")
             .ok()
@@ -60,9 +67,11 @@ impl AppState {
             domain: domain.into(),
             uri: uri.into(),
             db,
+            redis,
             rpc,
             rpc_url,
             program_id,
+            ai_oracle_pubkey,
             memo_program,
             usdc_mint,
             anchor,

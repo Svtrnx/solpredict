@@ -3,19 +3,11 @@ import axios from "axios";
 import { 
 	CreateMarketFormData, MarketSchema, MarketResponse, PrepareClaimPayload, PrepareClaimResponseSchema, 
 	ResolveIxRequestSchema, MarketResponseSchema, CreateMarketResponse, CreateMarketSchema, 
-	RawCreateRespSchema, ResolveIxBundleSchema, ResolveIxBundle, ResolveIxRequest, 
-	PrepareClaimSchema, PrepareClaimResponse
+	RawCreateRespSchema, ResolveIxBundleSchema, ResolveIxBundle, ResolveIxRequest, MarketsListParams,
+	PrepareClaimSchema, PrepareClaimResponse,   AiValidateStartReqSchema, AiValidateStartRespSchema,
+  	AiValidateStartReq, AiValidateStartResp, AiValidateResultSchema, AiValidateResult, AiValidateSelectReq,
+   	AiValidateSelectResp, AiValidateSelectReqSchema, AiValidateSelectRespSchema,
 } from "@/lib/types";
-
-export type MarketsListParams = {
-  limit?: number
-  cursor?: string | null
-  category?: string
-  q?: string
-  sort?: "volume" | "participants" | "ending"
-  signal?: AbortSignal
-  status?: string
-}
 
 export async function createMarket(formData: CreateMarketFormData): Promise<CreateMarketResponse> {
 	try {
@@ -119,5 +111,54 @@ export async function prepareClaimTx(p: PrepareClaimPayload): Promise<PrepareCla
 	} catch (error: any) {
 		console.error("Failed to get /markets/claim/tx", error);
 		throw error
+	}
+}
+
+export async function aiValidateStart(p: AiValidateStartReq): Promise<AiValidateStartResp> {
+	const payload = AiValidateStartReqSchema.parse(p);
+	try {
+		const { data } = await axios.post(
+		`${process.env.NEXT_PUBLIC_API_URL}/markets/ai/validate/start`,
+		payload,
+		{
+			withCredentials: true,
+			headers: { "Content-Type": "application/json" },
+		}
+		);
+
+		return AiValidateStartRespSchema.parse(data);
+	} catch (err: unknown) {
+		console.error("Failed to POST /markets/ai/validate/start", err);
+		throw err;
+	}
+}
+
+export async function aiValidateResult(hash: string): Promise<AiValidateResult> {
+	try {
+		const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/markets/ai/validate/result/${hash}`, {
+		withCredentials: true,
+		});
+		return AiValidateResultSchema.parse(data);
+	} catch (err: any) {
+		const data = err?.response?.data;
+		if (err?.response?.status === 404 && data) {
+		return AiValidateResultSchema.parse(data);
+		}
+		throw err;
+	}
+}
+
+export async function aiValidateSelect(p: AiValidateSelectReq): Promise<AiValidateSelectResp> {
+	const payload = AiValidateSelectReqSchema.parse(p)
+	try {
+		const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/ai/validate/select`, payload, {
+		withCredentials: true,
+		headers: { "Content-Type": "application/json" },
+		})
+
+		return AiValidateSelectRespSchema.parse(data)
+	} catch (err: unknown) {
+		console.error("Failed to POST /markets/ai/validate/select", err)
+		throw err
 	}
 }

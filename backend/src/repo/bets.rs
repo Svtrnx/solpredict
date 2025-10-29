@@ -1,7 +1,7 @@
 use sqlx::{PgPool, Transaction, Postgres};
 use time::OffsetDateTime;
 use serde::Serialize;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
@@ -28,18 +28,48 @@ pub async fn mark_position_claimed_by_pda(
     user_pubkey: &str,
     tx_sig_claim: &str,
 ) -> anyhow::Result<()> {
-    let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
+    if market_pda.is_empty() {
+        return Err(anyhow::anyhow!("market_pda cannot be empty"));
+    }
+    if user_pubkey.is_empty() {
+        return Err(anyhow::anyhow!("user_pubkey cannot be empty"));
+    }
+    if tx_sig_claim.is_empty() {
+        return Err(anyhow::anyhow!("tx_sig_claim cannot be empty"));
+    }
 
-    let market_id = sqlx::query_scalar!(
+    let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
+    
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut *tx)
+        .await
+        .context("Failed to set transaction isolation level")?;
+
+    let market_row = sqlx::query!(
         r#"
-        SELECT id AS "id: Uuid"
-        FROM markets
+        SELECT 
+            id AS "id: Uuid",
+            status AS "status!"
+        FROM market_view
         WHERE market_pda = $1
         "#,
         market_pda
     )
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
+    
+    let market_row = market_row.ok_or_else(|| {
+        anyhow::anyhow!("Market with PDA '{}' not found", market_pda)
+    })?;
+    
+    let market_id = market_row.id;
+    
+    if !matches!(market_row.status.as_str(), "settled_yes" | "settled_no") {
+        return Err(anyhow::anyhow!(
+            "Cannot claim: market status is '{}', must be settled", 
+            market_row.status
+        ));
+    }
 
     sqlx::query!(
         r#"
@@ -59,6 +89,14 @@ pub async fn mark_position_claimed_by_pda(
     .await?;
 
     tx.commit().await?;
+    
+    tracing::info!(
+        market_pda = %market_pda,
+        user = %user_pubkey,
+        tx_sig = %tx_sig_claim,
+        "Position marked as claimed"
+    );
+    
     Ok(())
 }
 
@@ -96,8 +134,11 @@ pub async fn fetch_recent_bets(
     .fetch_all(pool)
     .await?;
 
+    let has_more = rows.len() as i64 > limit;
+
     let mut items: Vec<RecentBet> = rows
         .into_iter()
+        .take(limit as usize) 
         .map(|r| RecentBet {
             user_address: r.user_address,
             side: r.side,
@@ -107,8 +148,8 @@ pub async fn fetch_recent_bets(
         })
         .collect();
 
-    let next_cursor = if items.len() as i64 > limit {
-        Some(items.pop().unwrap().cursor_id)
+    let next_cursor = if has_more {
+        items.pop().map(|item| item.cursor_id)
     } else {
         None
     };
@@ -126,20 +167,85 @@ pub async fn insert_bet_and_upsert_position(
     tx_sig: &str,
     block_time: Option<OffsetDateTime>,
 ) -> Result<i64> {
-    let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
+    if amount_1e6 <= 0 {
+        return Err(anyhow::anyhow!("Bet amount must be positive"));
+    }
+    
+    const MAX_BET_AMOUNT: i64 = 1_000_000_000_000; // 1M * 1e6
+    if amount_1e6 > MAX_BET_AMOUNT {
+        return Err(anyhow::anyhow!(
+            "Bet amount exceeds maximum allowed ({} USD)", 
+            MAX_BET_AMOUNT / 1_000_000
+        ));
+    }
+    
+    const MIN_BET_AMOUNT: i64 = 10_000; // 0.01 * 1e6
+    if amount_1e6 < MIN_BET_AMOUNT {
+        return Err(anyhow::anyhow!(
+            "Bet amount below minimum ({} USD)", 
+            MIN_BET_AMOUNT as f64 / 1_000_000.0
+        ));
+    }
 
-    let was_participant: bool = sqlx::query_scalar!(
+    let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
+    
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut *tx)
+        .await
+        .context("Failed to set transaction isolation level")?;
+
+    let market = sqlx::query!(
         r#"
-        SELECT EXISTS (
-          SELECT 1 FROM market_positions
-          WHERE market_id = $1 AND user_pubkey = $2
-        ) AS "exists!"
+        SELECT 
+            status AS "status!",
+            end_date_utc AS "end_date_utc!: OffsetDateTime"
+        FROM market_view
+        WHERE id = $1
         "#,
-        market_id,
-        user_pubkey
+        market_id
     )
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
+    
+    let market = market.ok_or_else(|| anyhow::anyhow!("Market not found"))?;
+    
+    if market.status != "active" {
+        return Err(anyhow::anyhow!(
+            "Cannot place bet: market status is '{}', must be 'active'", 
+            market.status
+        ));
+    }
+    
+    if market.end_date_utc < OffsetDateTime::now_utc() {
+        return Err(anyhow::anyhow!(
+            "Cannot place bet: market ended at {}", 
+            market.end_date_utc
+        ));
+    }
+
+    let market_state = sqlx::query!(
+        r#"
+        SELECT 
+            yes_total_1e6 AS "yes_total_1e6!: i64",
+            no_total_1e6 AS "no_total_1e6!: i64",
+            total_volume_1e6 AS "total_volume_1e6!: i64"
+        FROM market_state
+        WHERE market_id = $1
+        "#,
+        market_id
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    
+    if let Some(state) = market_state {
+        const MAX_SAFE_TOTAL: i64 = i64::MAX / 10 * 9;
+        
+        if state.total_volume_1e6 > MAX_SAFE_TOTAL - amount_1e6 {
+            return Err(anyhow::anyhow!(
+                "Market volume would exceed safe limits"
+            ));
+        }
+    }
 
     let side_str = if side_yes { "yes" } else { "no" };
 
@@ -199,18 +305,36 @@ pub async fn insert_bet_and_upsert_position(
               yes_total_1e6    = yes_total_1e6 + $2,
               no_total_1e6     = no_total_1e6  + $3,
               total_volume_1e6 = total_volume_1e6 + $4,
-              participants     = participants + CASE WHEN $5 THEN 1 ELSE 0 END,
+              participants     = (
+                SELECT COUNT(DISTINCT user_pubkey)
+                FROM market_positions
+                WHERE market_id = $1
+              ),
               updated_at       = NOW()
             WHERE market_id = $1
             "#,
             market_id,
             yes_delta,
             no_delta,
-            amount_1e6,
-            !was_participant
+            amount_1e6
         )
         .execute(&mut *tx)
         .await?;
+        
+        tracing::info!(
+            market_id = %market_id,
+            user = %user_pubkey,
+            side = %side_str,
+            amount = amount_1e6,
+            tx_sig = %tx_sig,
+            "New bet inserted successfully"
+        );
+    } else {
+        tracing::debug!(
+            tx_sig = %tx_sig,
+            bet_id = bet_id,
+            "Duplicate bet transaction detected, skipping state update"
+        );
     }
 
     tx.commit().await?;

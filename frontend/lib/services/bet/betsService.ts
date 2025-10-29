@@ -41,7 +41,7 @@ export async function fetchBets(params: {
 export async function prepareBet(p: PrepareBetPayload) {
 	const payload = PrepareBetSchema.parse(p);
 
-	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/bets/tx`, payload, {
+	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/ai/bets/tx`, payload, {
 	withCredentials: true,
 	headers: { "Content-Type": "application/json" },
 	});

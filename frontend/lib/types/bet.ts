@@ -26,11 +26,12 @@ export const BetDataSchema = z.object({
 
 export const PrepareBetSchema = z.object({
   market_pda: z.string().min(32).max(64),
-  side: z.enum(["yes", "no"]),
+  outcome_idx: z.number().int().min(0).max(1),
   amount_ui: z.number().positive().min(0.000001),
 });
 
 export type PrepareBetPayload = z.infer<typeof PrepareBetSchema>;
+
 
 export const PrepareBetResponseSchema = z.object({
   ok: z.boolean(),
