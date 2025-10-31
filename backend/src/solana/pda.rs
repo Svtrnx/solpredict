@@ -22,9 +22,9 @@ pub fn pda_market(user: &Pubkey, feed: &[u8; 32], end_ts: i64) -> (Pubkey, u8) {
 }
 
 /// Derive market PDA for AI oracle markets
-pub fn pda_market_ai(authority: &Pubkey, end_ts: i64, oracle_kind: u8) -> (Pubkey, u8) {
+pub fn pda_market_ai(authority: &Pubkey, end_ts: i64, oracle_kind: u8, salt: &[u8; 8]) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[MARKET_SEED, authority.as_ref(), &end_ts.to_le_bytes(), &[oracle_kind]],
+        &[MARKET_SEED, authority.as_ref(), &end_ts.to_le_bytes(), &[oracle_kind], salt.as_ref()],
         &onchain::ID,
     )
 }

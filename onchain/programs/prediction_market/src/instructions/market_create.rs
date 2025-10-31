@@ -175,6 +175,7 @@ pub struct CreateMarketMultiParams {
     pub num_outcomes: u8,
     pub end_ts: i64,
     pub ai_oracle_authority: Pubkey,
+    pub salt: [u8; 8],  // Unique salt to prevent PDA collisions
 }
 
 #[derive(Accounts)]
@@ -187,7 +188,7 @@ pub struct CreateMarketMulti<'info> {
         init,
         payer = authority,
         space = Market::SPACE,
-        seeds = [b"market", authority.key().as_ref(), &p.end_ts.to_le_bytes(), &[p.oracle_kind]],
+        seeds = [b"market", authority.key().as_ref(), &p.end_ts.to_le_bytes(), &[p.oracle_kind], &p.salt],
         bump
     )]
     pub market: Account<'info, Market>,

@@ -1,5 +1,5 @@
 use super::context::{AnchorCtx, program};
-use super::pda::{pda_position, pda_position_multi};
+use super::pda::{pda_position, pda_position_multi, pda_config};
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::Result;
 use std::sync::Arc;
@@ -31,6 +31,16 @@ pub fn get_position_multi_account(
     let acc: onchain::state::position::PositionMulti = program
         .account(pos_pda)
         .map_err(|e| anyhow::anyhow!("position(multi) fetch failed: {e}"))?;
+    Ok(acc)
+}
+
+/// Fetch config account
+pub fn get_config_account(ctx: &AnchorCtx) -> Result<onchain::state::config::Config> {
+    let program = program(ctx)?;
+    let (config_pda, _) = pda_config();
+    let acc: onchain::state::config::Config = program
+        .account(config_pda)
+        .map_err(|e| anyhow::anyhow!("config account fetch failed: {e}"))?;
     Ok(acc)
 }
 

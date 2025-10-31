@@ -101,7 +101,29 @@ pub struct InitConfig<'info> {
 pub struct UpdateConfig<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    
+
     #[account(mut, seeds = [b"config"], bump)]
     pub config: Account<'info, Config>,
+}
+
+pub fn close_config(ctx: Context<CloseConfig>) -> Result<()> {
+    let config_lamports = ctx.accounts.config.lamports();
+    **ctx.accounts.config.try_borrow_mut_lamports()? -= config_lamports;
+    **ctx.accounts.admin.try_borrow_mut_lamports()? += config_lamports;
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct CloseConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// CHECK: Config account validated by seeds constraint
+    #[account(
+        mut,
+        seeds = [b"config"],
+        bump
+    )]
+    pub config: UncheckedAccount<'info>,
 }

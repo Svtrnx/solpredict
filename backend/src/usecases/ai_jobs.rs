@@ -58,6 +58,7 @@ pub fn compute_hash(query: &str, category: MarketCategory) -> String {
     let cat: &str = match category {
         MarketCategory::Politics => "politics",
         MarketCategory::War => "war",
+        MarketCategory::Finance => "finance",
     };
     h.update(cat.as_bytes());
     format!("{:x}", h.finalize())

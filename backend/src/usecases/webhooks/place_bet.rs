@@ -16,12 +16,31 @@ const IXI_USER: usize       = 0;
 const IXI_MARKET: usize     = 1;
 const IXI_USER_ATA: usize   = 3;
 
+// DEPRECATED: backward compat for legacy side parsing
 fn memo_side(m: &str) -> Option<bool> {
     m.split('&')
         .find_map(|p| {
             let (k, v) = p.split_once('=')?;
             (k == "s").then_some(matches!(v, "yes" | "y" | "true" | "1"))
         })
+}
+
+// Parse outcome_idx from memo (new format: o=0, o=1, o=2 ...)
+fn memo_outcome_idx(m: &str) -> Option<u8> {
+    m.split('&')
+        .find_map(|p| {
+            let (k, v) = p.split_once('=')?;
+            (k == "o").then(|| v.parse::<u8>().ok())?
+        })
+}
+
+fn outcome_idx_from_place_bet_ix(ix: &serde_json::Value) -> Option<u8> {
+    let data_b58 = ix.get("data")?.as_str()?;
+    let data = bs58::decode(data_b58).into_vec().ok()?;
+    if data.len() < 9 { return None; }
+
+    let side = data[8];
+    Some(side) // Returns 0 for YES, 1 for NO, or custom outcome idx
 }
 
 fn side_from_place_bet_ix(ix: &serde_json::Value) -> Option<bool> {
@@ -53,12 +72,20 @@ pub async fn handle(
 
     let (ixs, msg_keys_opt) = extract_instructions(item);
     let memo = extract_memo(&ixs, msg_keys_opt, memo_program);
-	
-	let side_yes = side_from_place_bet_ix(this_ix)
-        .or_else(|| memo.as_deref().and_then(memo_side))
-        .unwrap_or(true);
 
-    let amount_and_user: Option<(f64, &str)> = 
+    let outcome_idx = outcome_idx_from_place_bet_ix(this_ix)
+        .or_else(|| memo.as_deref().and_then(memo_outcome_idx))
+        .or_else(|| {
+            memo.as_deref()
+                .and_then(memo_side)
+                .map(|side_yes| if side_yes { 0 } else { 1 })
+        })
+        .or_else(|| {
+            side_from_place_bet_ix(this_ix).map(|side_yes| if side_yes { 0 } else { 1 })
+        })
+        .unwrap_or(0);
+
+    let amount_and_user: Option<(f64, &str)> =
         if let Some((amount_ui, from)) = amount_user_from_token_transfers(item, usdc_mint) {
             let user = if !from.is_empty() { from } else { user_from_accounts };
             Some((amount_ui, user))
@@ -78,20 +105,20 @@ pub async fn handle(
 
     if let Some((amount_ui, user)) = amount_and_user {
         tracing::info!(
-            "🧾 place_bet sig={} slot={} market={} user={} amount_usdc={} memo={:?} (feePayer={})",
-            signature, slot, market_pda, user, amount_ui, memo, fee_payer
+            "🧾 place_bet sig={} slot={} market={} user={} amount_usdc={} outcome_idx={} memo={:?} (feePayer={})",
+            signature, slot, market_pda, user, amount_ui, outcome_idx, memo, fee_payer
         );
 
         let m = market_repo::fetch_by_pda(state.db.pool(), market_pda)
             .await
             .map_err(|e| AppError::Other(e.into()))?
             .ok_or_else(|| AppError::NotFound)?;
-		
+
         bets::record_bet_and_points(
             state.db.pool(),
             m.id,
             user,
-            side_yes,
+            outcome_idx,
             (amount_ui * 1_000_000.0) as i64,
             signature,
         )

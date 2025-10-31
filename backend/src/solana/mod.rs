@@ -17,6 +17,7 @@ pub use market::{
     build_create_market_ai_binary_unsigned,
 };
 pub use accounts::{
+    get_config_account,
     get_market_account,
     fetch_market_account,
     fetch_market_snapshot,
@@ -40,6 +41,7 @@ pub use resolution::{
 pub use admin::{
     init_config,
     update_config,
+    close_config,
     airdrop_usdc_once,
     set_token_metadata,
 };

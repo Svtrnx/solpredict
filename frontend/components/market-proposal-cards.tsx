@@ -2,7 +2,7 @@
 import { useState } from "react"
 import type React from "react"
 
-import { openStepper, setStepStatus, nextStep, setMarketPda } from "@/lib/features/marketCreationStepperSlice"
+import { openStepper, setStepStatus, setMarketPda } from "@/lib/features/marketCreationStepperSlice"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle2, Calendar, FileText, Shield } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -106,46 +106,29 @@ export function MarketProposalCards({ proposals, onSelect, validationHash }: Mar
     setIsSubmitting(true)
 
     try {
-      dispatch(openStepper())
-      dispatch(setStepStatus({ step: 0, status: "active" }))
-		console.log("validationHash", validationHash)
-		console.log("selected.id", selected.id)
+      console.log("validationHash", validationHash)
+      console.log("selected.id", selected.id)
       const response = await aiValidateSelect({
         hash: validationHash,
         id: selected.id,
         // hash: "5d42357f39ef12d193dfd5b7a9eb7e9d8da5c47d0a23f46eab8cc02d9405fb6c",
         // id: "f4dee67fd21e",
       })
-	  console.log('response', response)
+      console.log('response', response)
       if (!response.ok) {
-        dispatch(
-          setStepStatus({
-            step: 0,
-            status: "error",
-            message: response.message || "Failed to validate selection",
-          }),
-        )
         showToast("danger", response.message || "Failed to validate selection")
         return
       }
 
-      dispatch(
-        setStepStatus({
-          step: 0,
-          status: "success",
-          message: "Market proposal validated successfully",
-        }),
-      )
-      dispatch(nextStep())
-
-      dispatch(setStepStatus({ step: 1, status: "active" }))
+      dispatch(openStepper())
+      dispatch(setStepStatus({ step: 0, status: "active" }))
 
       const txResult = await signAndSendBase64TxV2(response.create_tx, wallet, connection)
 
       if (txResult.status === "error") {
         dispatch(
           setStepStatus({
-            step: 1,
+            step: 0,
             status: "error",
             message: `Transaction signing failed. ${txResult.message}`,
           }),
@@ -158,7 +141,7 @@ export function MarketProposalCards({ proposals, onSelect, validationHash }: Mar
         }
         dispatch(
           setStepStatus({
-            step: 1,
+            step: 0,
             status: "warning",
             message: `Simulation warning. ${txResult.message}`,
           }),
@@ -173,9 +156,8 @@ export function MarketProposalCards({ proposals, onSelect, validationHash }: Mar
 
       dispatch(
         setStepStatus({
-          step: 1,
+          step: 0,
           status: "success",
-          message: `Transaction signed successfully: ${txResult.signature}`,
         }),
       )
       showToast("success", "Market created successfully!")
@@ -185,7 +167,7 @@ export function MarketProposalCards({ proposals, onSelect, validationHash }: Mar
       console.error("Market creation error:", error)
       dispatch(
         setStepStatus({
-          step: 1,
+          step: 0,
           status: "error",
           message: "An unexpected error occurred. Please try again.",
         }),

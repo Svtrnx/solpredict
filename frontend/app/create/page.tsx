@@ -11,12 +11,14 @@ import { openStepper, setStepStatus, nextStep, setMarketPda } from "@/lib/featur
 import { WalletAuthorizationGuard } from "@/components/wallet-authorization-guard"
 import { MarketCreationStepper } from "@/components/market-creation-stepper"
 import { getPythFeeds, getPythFeed } from "@/lib/services/pyth/feedService"
+import { PythoracleSection } from "@/components/pyth-oracle-section"
+import { createMarket } from "@/lib/services/market/marketService"
+import { AIChat } from "@/components/ai-chat"
 import { signAndSendBase64TxV2 } from "@/lib/solana/signAndSend"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks"
 import { showToast } from "@/components/shared/show-toast"
 import type { PythFeedItem } from "@/lib/types/pyth"
-import { useAppDispatch, useAppSelector } from "@/lib/hooks"
-import { AIoracleSection } from "@/components/ai-oracle-section"
-import { PythoracleSection } from "@/components/pyth-oracle-section"
+import { CreateMarketFormData } from "@/lib/types"
 
 type OracleType = "ai" | "pyth"
 
@@ -185,27 +187,27 @@ export default function CreateMarketPage() {
           dispatch(nextStep())
         }
 
-        // const formData_: CreateMarketFormData = {
-        //   marketType: oracleType === "ai" ? "custom" : formData.marketType,
-        //   category: formData.category,
-        //   endDate: formData.endDate,
-        //   initialLiquidity: Number(formData.initialLiquidity),
-        //   feedId: oracleType === "ai" ? "" : formData.feedId,
-        //   symbol: formData.symbol,
-        //   comparator: formData.comparator,
-        //   threshold: Number(formData.threshold),
-        //   lowerBound: Number(formData.lowerBound),
-        //   upperBound: Number(formData.upperBound),
-        //   initialSide: formData.initialSide,
-        // }
+        const formData_: CreateMarketFormData = {
+          marketType: oracleType === "ai" ? "custom" : formData.marketType,
+          category: formData.category,
+          endDate: formData.endDate,
+          initialLiquidity: Number(formData.initialLiquidity),
+          feedId: oracleType === "ai" ? "" : formData.feedId,
+          symbol: formData.symbol,
+          comparator: formData.comparator,
+          threshold: Number(formData.threshold),
+          lowerBound: Number(formData.lowerBound),
+          upperBound: Number(formData.upperBound),
+          initialSide: formData.initialSide,
+        }
 
         dispatch(setStepStatus({ step: 1, status: "active" }))
 
         // Get tx, market_pda
-        // const resp = await createMarket(formData_)
-        // const { tx, marketPda } = resp
-        const tx = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAcOd/XaI1Y7qCpUXBg1OFwOVLiKLKd3inzU+xTdLXXeOktGmuVvyrW00HxHa7Jq8m7W4SXRWJxYa12N4roGl+mOEEl11H3widnz6DEA+MHrRpsAworTD8xrakz41GSdIzmraEkS8C8DhBH5fz5L5ytjBuDz2C2jYfMnycxbOlrm8YKk2tpqLM1KURtCz5v2r5Wcj26skt41s7a9Xd9Nk9Z/16bRTJQJqN/xtWlfjPDC1C5ZX37xbDaqohdMv6RdKM8f6jWB1k28Xe/E/uhLYq+sVRSFAUxGW9wU2OfEexrmOgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpQv0YfygnEJab7XmNr1oKRr6Gk4Q+pYV5ZNid9qwmfOBRmdv2b8udCbNHN7kwaSlT24xMj+4e4m2pusohXyr7zIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZyzdxb3l/PFbRTnAbFvYngPxPcZxCrTLJdolFz3A3kIr4IOBJA+KiwVa5bbm5OvzW6h2FMg4ljwqcHPbHB9o+C8LsPxBiAi+NJF2sGRZJ5lfdQuYUBqjyIJPk0TJwaFkQAQ0MAgUECQYKAQgLBwwDCPxQPezkUO1e"
-        const marketPda = "5wkyLt6rivEQZf8K1xhinEbPFjpeQAhNpbqAU1qt3gd8"
+        const resp = await createMarket(formData_)
+        const { tx, marketPda } = resp
+        // const tx = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAcOd/XaI1Y7qCpUXBg1OFwOVLiKLKd3inzU+xTdLXXeOktGmuVvyrW00HxHa7Jq8m7W4SXRWJxYa12N4roGl+mOEEl11H3widnz6DEA+MHrRpsAworTD8xrakz41GSdIzmraEkS8C8DhBH5fz5L5ytjBuDz2C2jYfMnycxbOlrm8YKk2tpqLM1KURtCz5v2r5Wcj26skt41s7a9Xd9Nk9Z/16bRTJQJqN/xtWlfjPDC1C5ZX37xbDaqohdMv6RdKM8f6jWB1k28Xe/E/uhLYq+sVRSFAUxGW9wU2OfEexrmOgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpQv0YfygnEJab7XmNr1oKRr6Gk4Q+pYV5ZNid9qwmfOBRmdv2b8udCbNHN7kwaSlT24xMj+4e4m2pusohXyr7zIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZyzdxb3l/PFbRTnAbFvYngPxPcZxCrTLJdolFz3A3kIr4IOBJA+KiwVa5bbm5OvzW6h2FMg4ljwqcHPbHB9o+C8LsPxBiAi+NJF2sGRZJ5lfdQuYUBqjyIJPk0TJwaFkQAQ0MAgUECQYKAQgLBwwDCPxQPezkUO1e"
+        // const marketPda = "5wkyLt6rivEQZf8K1xhinEbPFjpeQAhNpbqAU1qt3gd8"
         if (!tx || typeof tx !== "string") {
           // console.error("Bad response from server:", resp)
           showToast("danger", "Server didn't return a transaction to sign.")
@@ -298,30 +300,30 @@ export default function CreateMarketPage() {
 
         <div className="flex items-center justify-center gap-2">
           <Button
-            variant={oracleType === "ai" ? "default" : "outline"}
+            variant={"outline"}
             onClick={() => {
               setOracleType("ai")
               setFormData((prev) => ({ ...prev, resolutionSource: "AI-Powered Resolution" }))
             }}
-            className={`px-6 py-2 ${oracleType === "ai" ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+            className={`px-6 py-2 cursor-pointer ${oracleType === "ai" ? "glass bg-transparent text-white hover:glow" : ""}`}
           >
             <Brain className="w-4 h-4 mr-2" />
             AI Oracle
           </Button>
           <Button
-            variant={oracleType === "pyth" ? "default" : "outline"}
+            variant={"outline"}
             onClick={() => {
               setOracleType("pyth")
               setFormData((prev) => ({ ...prev, resolutionSource: "Pyth Network Oracle" }))
             }}
-            className={`px-6 py-2 ${oracleType === "pyth" ? "bg-cyan-600 hover:bg-cyan-700" : ""}`}
+            className={`px-6 py-2 cursor-pointer ${oracleType === "pyth" ? "glass bg-transparent text-white hover:glow" : ""}`}
           >
             <Network className="w-4 h-4 mr-2" />
             Pyth Oracle
           </Button>
         </div>
 
-        {oracleType === "ai" && <AIoracleSection onPromptSubmit={handleAiPromptSubmit} />}
+        {oracleType === "ai" && <AIChat onPromptSubmit={handleAiPromptSubmit} />}
 
         {oracleType === "pyth" && (
           <PythoracleSection
@@ -335,7 +337,7 @@ export default function CreateMarketPage() {
           />
         )}
       </div>
-      <MarketCreationStepper onStartCreating={handleCreateMarket} />
+      <MarketCreationStepper onStartCreating={handleCreateMarket} isAiMarket={oracleType === "ai"} />
     </div>
   )
 }

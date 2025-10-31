@@ -1,14 +1,15 @@
-use sqlx::{PgPool, Transaction, Postgres};
-use time::OffsetDateTime;
+use anyhow::{Context, Result};
 use serde::Serialize;
-use anyhow::{Result, Context};
+use sqlx::{PgPool, Postgres, Transaction};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentBet {
     pub user_address: String,
-    pub side: String,
+    pub side: String, // DEPRECATED: kept for backward compatibility
+    pub outcome_idx: i16,
     pub amount: f64,
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
@@ -39,7 +40,7 @@ pub async fn mark_position_claimed_by_pda(
     }
 
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
-    
+
     sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         .execute(&mut *tx)
         .await
@@ -57,16 +58,15 @@ pub async fn mark_position_claimed_by_pda(
     )
     .fetch_optional(&mut *tx)
     .await?;
-    
-    let market_row = market_row.ok_or_else(|| {
-        anyhow::anyhow!("Market with PDA '{}' not found", market_pda)
-    })?;
-    
+
+    let market_row =
+        market_row.ok_or_else(|| anyhow::anyhow!("Market with PDA '{}' not found", market_pda))?;
+
     let market_id = market_row.id;
-    
+
     if !matches!(market_row.status.as_str(), "settled_yes" | "settled_no") {
         return Err(anyhow::anyhow!(
-            "Cannot claim: market status is '{}', must be settled", 
+            "Cannot claim: market status is '{}', must be settled",
             market_row.status
         ));
     }
@@ -89,17 +89,16 @@ pub async fn mark_position_claimed_by_pda(
     .await?;
 
     tx.commit().await?;
-    
+
     tracing::info!(
         market_pda = %market_pda,
         user = %user_pubkey,
         tx_sig = %tx_sig_claim,
         "Position marked as claimed"
     );
-    
+
     Ok(())
 }
-
 
 pub async fn fetch_recent_bets(
     pool: &PgPool,
@@ -116,6 +115,7 @@ pub async fn fetch_recent_bets(
           b.id                                        AS "cursor_id!: i64",
           b.user_pubkey                               AS "user_address!: String",
           b.side                                      AS "side!: String",
+          b.outcome_idx                               AS "outcome_idx!: i16",
           (b.amount_1e6::numeric / 1000000.0)::float8 AS "amount!: f64",
           COALESCE(b.block_time, b.created_at)        AS "timestamp!: OffsetDateTime"
         FROM market_bets b
@@ -138,10 +138,11 @@ pub async fn fetch_recent_bets(
 
     let mut items: Vec<RecentBet> = rows
         .into_iter()
-        .take(limit as usize) 
+        .take(limit as usize)
         .map(|r| RecentBet {
             user_address: r.user_address,
             side: r.side,
+            outcome_idx: r.outcome_idx,
             amount: r.amount,
             timestamp: r.timestamp,
             cursor_id: r.cursor_id,
@@ -157,12 +158,11 @@ pub async fn fetch_recent_bets(
     Ok(RecentBetsPage { items, next_cursor })
 }
 
-
 pub async fn insert_bet_and_upsert_position(
     pool: &PgPool,
     market_id: Uuid,
     user_pubkey: &str,
-    side_yes: bool,
+    outcome_idx: u8,
     amount_1e6: i64,
     tx_sig: &str,
     block_time: Option<OffsetDateTime>,
@@ -170,25 +170,25 @@ pub async fn insert_bet_and_upsert_position(
     if amount_1e6 <= 0 {
         return Err(anyhow::anyhow!("Bet amount must be positive"));
     }
-    
+
     const MAX_BET_AMOUNT: i64 = 1_000_000_000_000; // 1M * 1e6
     if amount_1e6 > MAX_BET_AMOUNT {
         return Err(anyhow::anyhow!(
-            "Bet amount exceeds maximum allowed ({} USD)", 
+            "Bet amount exceeds maximum allowed ({} USD)",
             MAX_BET_AMOUNT / 1_000_000
         ));
     }
-    
+
     const MIN_BET_AMOUNT: i64 = 10_000; // 0.01 * 1e6
     if amount_1e6 < MIN_BET_AMOUNT {
         return Err(anyhow::anyhow!(
-            "Bet amount below minimum ({} USD)", 
+            "Bet amount below minimum ({} USD)",
             MIN_BET_AMOUNT as f64 / 1_000_000.0
         ));
     }
 
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
-    
+
     sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         .execute(&mut *tx)
         .await
@@ -206,19 +206,19 @@ pub async fn insert_bet_and_upsert_position(
     )
     .fetch_optional(&mut *tx)
     .await?;
-    
+
     let market = market.ok_or_else(|| anyhow::anyhow!("Market not found"))?;
-    
+
     if market.status != "active" {
         return Err(anyhow::anyhow!(
-            "Cannot place bet: market status is '{}', must be 'active'", 
+            "Cannot place bet: market status is '{}', must be 'active'",
             market.status
         ));
     }
-    
+
     if market.end_date_utc < OffsetDateTime::now_utc() {
         return Err(anyhow::anyhow!(
-            "Cannot place bet: market ended at {}", 
+            "Cannot place bet: market ended at {}",
             market.end_date_utc
         ));
     }
@@ -236,37 +236,43 @@ pub async fn insert_bet_and_upsert_position(
     )
     .fetch_optional(&mut *tx)
     .await?;
-    
+
     if let Some(state) = market_state {
         const MAX_SAFE_TOTAL: i64 = i64::MAX / 10 * 9;
-        
+
         if state.total_volume_1e6 > MAX_SAFE_TOTAL - amount_1e6 {
-            return Err(anyhow::anyhow!(
-                "Market volume would exceed safe limits"
-            ));
+            return Err(anyhow::anyhow!("Market volume would exceed safe limits"));
         }
     }
 
-    let side_str = if side_yes { "yes" } else { "no" };
+    // Convert outcome_idx to legacy side for backward compatibility
+    let side_str = match outcome_idx {
+        0 => "yes",
+        1 => "no",
+        _ => "custom",
+    };
+
+    let outcome_idx_i16 = outcome_idx as i16;
 
     let row = sqlx::query!(
         r#"
         WITH ins AS (
           INSERT INTO market_bets (
-            market_id, user_pubkey, side, amount_1e6, tx_sig, block_time
+            market_id, user_pubkey, side, outcome_idx, amount_1e6, tx_sig, block_time
           )
-          VALUES ($1,$2,$3,$4,$5,$6)
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
           ON CONFLICT (tx_sig) DO NOTHING
           RETURNING id
         )
         SELECT
           EXISTS (SELECT 1 FROM ins)                         AS "inserted_new!",
           COALESCE((SELECT id FROM ins),
-                   (SELECT id FROM market_bets WHERE tx_sig = $5)) AS "bet_id!: i64"
+                   (SELECT id FROM market_bets WHERE tx_sig = $6)) AS "bet_id!: i64"
         "#,
         market_id,
         user_pubkey,
         side_str,
+        outcome_idx_i16,
         amount_1e6,
         tx_sig,
         block_time
@@ -278,52 +284,104 @@ pub async fn insert_bet_and_upsert_position(
     let bet_id = row.bet_id;
 
     if inserted_new {
-        let (yes_delta, no_delta) = if side_yes { (amount_1e6, 0) } else { (0, amount_1e6) };
+        // For binary markets (outcome 0 or 1), update legacy positions table
+        // For multi-outcome markets, update the new positions_multi table
+        if outcome_idx <= 1 {
+            let (yes_delta, no_delta) = if outcome_idx == 0 {
+                (amount_1e6, 0)
+            } else {
+                (0, amount_1e6)
+            };
 
-        sqlx::query!(
-            r#"
-            INSERT INTO market_positions (
-              market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim
+            sqlx::query!(
+                r#"
+                INSERT INTO market_positions (
+                  market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim
+                )
+                VALUES ($1,$2,$3,$4,FALSE,NULL)
+                ON CONFLICT (market_id, user_pubkey) DO UPDATE
+                  SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
+                      no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
+                "#,
+                market_id,
+                user_pubkey,
+                yes_delta,
+                no_delta
             )
-            VALUES ($1,$2,$3,$4,FALSE,NULL)
-            ON CONFLICT (market_id, user_pubkey) DO UPDATE
-              SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
-                  no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
-            "#,
-            market_id,
-            user_pubkey,
-            yes_delta,
-            no_delta
-        )
-        .execute(&mut *tx)
-        .await?;
+            .execute(&mut *tx)
+            .await?;
 
-        sqlx::query!(
-            r#"
-            UPDATE market_state
-            SET
-              yes_total_1e6    = yes_total_1e6 + $2,
-              no_total_1e6     = no_total_1e6  + $3,
-              total_volume_1e6 = total_volume_1e6 + $4,
-              participants     = (
-                SELECT COUNT(DISTINCT user_pubkey)
-                FROM market_positions
+            sqlx::query!(
+                r#"
+                UPDATE market_state
+                SET
+                  yes_total_1e6    = yes_total_1e6 + $2,
+                  no_total_1e6     = no_total_1e6  + $3,
+                  total_volume_1e6 = total_volume_1e6 + $4,
+                  participants     = (
+                    SELECT COUNT(DISTINCT user_pubkey)
+                    FROM market_positions
+                    WHERE market_id = $1
+                  ),
+                  updated_at       = NOW()
                 WHERE market_id = $1
-              ),
-              updated_at       = NOW()
-            WHERE market_id = $1
-            "#,
-            market_id,
-            yes_delta,
-            no_delta,
-            amount_1e6
-        )
-        .execute(&mut *tx)
-        .await?;
-        
+                "#,
+                market_id,
+                yes_delta,
+                no_delta,
+                amount_1e6
+            )
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            sqlx::query!(
+                r#"
+                INSERT INTO market_positions_multi (
+                  market_id, user_pubkey, outcome_idx, stake_1e6, claimed, tx_sig_claim
+                )
+                VALUES ($1, $2, $3, $4, FALSE, NULL)
+                ON CONFLICT (market_id, user_pubkey, outcome_idx) DO UPDATE
+                  SET stake_1e6 = market_positions_multi.stake_1e6 + EXCLUDED.stake_1e6
+                "#,
+                market_id,
+                user_pubkey,
+                outcome_idx_i16,
+                amount_1e6
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query!(
+                r#"
+                UPDATE market_state
+                SET
+                  tvl_per_outcome_1e6 = jsonb_set(
+                    COALESCE(tvl_per_outcome_1e6, '[]'::jsonb),
+                    ARRAY[$2::text],
+                    to_jsonb(COALESCE((tvl_per_outcome_1e6->$2)::bigint, 0) + $3),
+                    true
+                  ),
+                  total_volume_1e6 = total_volume_1e6 + $3,
+                  participants = (
+                    SELECT COUNT(DISTINCT user_pubkey)
+                    FROM market_positions_multi
+                    WHERE market_id = $1
+                  ),
+                  updated_at = NOW()
+                WHERE market_id = $1
+                "#,
+                market_id,
+                outcome_idx_i16.to_string(),
+                amount_1e6
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
         tracing::info!(
             market_id = %market_id,
             user = %user_pubkey,
+            outcome_idx = outcome_idx,
             side = %side_str,
             amount = amount_1e6,
             tx_sig = %tx_sig,

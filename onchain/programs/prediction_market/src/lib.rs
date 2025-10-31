@@ -38,6 +38,10 @@ pub mod prediction_market {
         admin::update_config(ctx, fee_bps, resolver_bps, creator_bps, resolver_tip_cap, new_treasury)
     }
 
+    pub fn close_config(ctx: Context<CloseConfig>) -> Result<()> {
+        admin::close_config(ctx)
+    }
+
     // ============ Airdrop ============
     pub fn airdrop_once(ctx: Context<AirdropOnce>) -> Result<()> {
         airdrop::airdrop_once(ctx)

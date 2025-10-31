@@ -13,6 +13,7 @@ import { SlidingNumber } from "@/components/ui/sliding-number"
 import { RecentBets } from "@/components/market/recent-bets"
 import { ShimmerSkeleton } from "@/components/ui/skeleton"
 import PythChart from "@/components/pyth-price-chart"
+import { AIMarketDetails } from "@/components/ai-market-details"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -274,10 +275,14 @@ export default function MarketPage() {
         return
       }
 
+
+      const isAiMarket = Boolean(market?.aiDescription || market?.aiCriteriaMd)
+
       const prep = await prepareBet({
         market_pda: market_pda,
         outcome_idx: toOutcomeIdx(selectedSide),
         amount_ui: amount,
+        isAiMarket,
       })
 
       if (!prep?.tx_base64) {
@@ -541,7 +546,18 @@ export default function MarketPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 space-y-6 animate-fade-in animation-delay-250">
-              <PythChart symbol={market.symbol} feedId={market.feedId} />
+              {market.feedId && market.symbol ? (
+                <PythChart symbol={market.symbol} feedId={market.feedId} />
+              ) : (
+                <AIMarketDetails
+                  description={market.aiDescription}
+                  criteriaMd={market.aiCriteriaMd}
+                  acceptedSources={market.aiAcceptedSources}
+                  endDate={market.endDate}
+                  status={market.status}
+                  isAiMarket={true}
+                />
+              )}
             </div>
 
             <div className="space-y-6 animate-fade-in-up animation-delay-300">
@@ -908,7 +924,7 @@ export default function MarketPage() {
                 </Card>
               )}
 
-              {isAuthorized && (
+              {isAuthorized && market.status === "open" && !canResolve && (
                 <Card className="glass border-2 border-border/50">
                   <CardHeader className="pb-3 border-b border-border/30 bg-gradient-to-br from-purple-500/5 via-transparent to-transparent">
                     <CardTitle className="flex items-center justify-between text-lg">

@@ -49,6 +49,8 @@ pub struct MarketRowFetch {
     pub bound_lo_1e6: Option<i64>,
     pub bound_hi_1e6: Option<i64>,
     pub status: String,
+    pub market_kind: Option<String>,
+    pub ai_topic: Option<String>,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -80,6 +82,9 @@ pub struct MarketRow {
     pub status: String,
     pub resolver_pubkey: Option<String>,
     pub ai_topic: Option<String>,
+    pub ai_description: Option<String>,
+    pub ai_criteria_md: Option<String>,
+    pub ai_accepted_sources: Option<Vec<String>>,
 }
 
 
@@ -374,7 +379,7 @@ pub async fn fetch_markets_page(
           SELECT
             id, market_pda, category, total_volume_1e6, participants, price_yes_bp,
             end_date_utc, updated_at, symbol, market_type, comparator,
-            bound_lo_1e6, bound_hi_1e6, status,
+            bound_lo_1e6, bound_hi_1e6, status, market_kind, ai_topic,
             CASE status
               WHEN 'active'           THEN 1
               WHEN 'awaiting_resolve' THEN 2
@@ -460,6 +465,8 @@ pub async fn fetch_markets_page(
             bound_lo_1e6: r.try_get("bound_lo_1e6")?,
             bound_hi_1e6: r.try_get("bound_hi_1e6")?,
             status: r.try_get("status")?,
+            market_kind: r.try_get("market_kind")?,
+            ai_topic: r.try_get("ai_topic")?,
         });
     }
 
@@ -492,8 +499,36 @@ pub async fn fetch_markets_page(
 
 
 pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<Option<MarketRow>> {
+    #[derive(sqlx::FromRow)]
+    struct MarketRowQuery {
+        id: uuid::Uuid,
+        market_pda: String,
+        creator: String,
+        category: String,
+        feed_id: Option<String>,
+        symbol: Option<String>,
+        end_date_utc: chrono::DateTime<chrono::Utc>,
+        market_type: String,
+        market_kind: Option<String>,
+        comparator: Option<String>,
+        bound_lo_1e6: Option<i64>,
+        bound_hi_1e6: Option<i64>,
+        initial_liquidity_1e6: Option<i64>,
+        yes_total_1e6: i64,
+        no_total_1e6: i64,
+        total_volume_1e6: i64,
+        participants: i32,
+        price_yes_bp: Option<i32>,
+        status: String,
+        resolver_pubkey: Option<String>,
+        ai_topic: Option<String>,
+        ai_description: Option<String>,
+        ai_criteria_md: Option<String>,
+        ai_accepted_sources: Option<sqlx::types::Json<Vec<String>>>,
+    }
+
     let row = sqlx::query_as!(
-        MarketRow,
+        MarketRowQuery,
         r#"
         SELECT
             id                          AS "id!: uuid::Uuid",
@@ -519,7 +554,10 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
             price_yes_bp                AS "price_yes_bp?: i32",
             status                      AS "status!",
             resolver_pubkey             AS "resolver_pubkey?",
-            ai_topic                    AS "ai_topic?"
+            ai_topic                    AS "ai_topic?",
+            ai_description              AS "ai_description?",
+            ai_criteria_md              AS "ai_criteria_md?",
+            ai_accepted_sources         AS "ai_accepted_sources?: sqlx::types::Json<Vec<String>>"
         FROM market_view
         WHERE market_pda = $1
         "#,
@@ -527,7 +565,33 @@ pub async fn find_by_address(pool: &PgPool, market_pda: &str) -> anyhow::Result<
     )
     .fetch_optional(pool)
     .await?;
-    Ok(row)
+
+    Ok(row.map(|r| MarketRow {
+        id: r.id,
+        market_pda: r.market_pda,
+        creator: r.creator,
+        category: r.category,
+        feed_id: r.feed_id,
+        symbol: r.symbol,
+        end_date_utc: r.end_date_utc,
+        market_type: r.market_type,
+        market_kind: r.market_kind,
+        comparator: r.comparator,
+        bound_lo_1e6: r.bound_lo_1e6,
+        bound_hi_1e6: r.bound_hi_1e6,
+        initial_liquidity_1e6: r.initial_liquidity_1e6,
+        yes_total_1e6: r.yes_total_1e6,
+        no_total_1e6: r.no_total_1e6,
+        total_volume_1e6: r.total_volume_1e6,
+        participants: r.participants,
+        price_yes_bp: r.price_yes_bp,
+        status: r.status,
+        resolver_pubkey: r.resolver_pubkey,
+        ai_topic: r.ai_topic,
+        ai_description: r.ai_description,
+        ai_criteria_md: r.ai_criteria_md,
+        ai_accepted_sources: r.ai_accepted_sources.map(|j| j.0),
+    }))
 }
 
 pub async fn fetch_by_pda(

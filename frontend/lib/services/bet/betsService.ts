@@ -38,12 +38,17 @@ export async function fetchBets(params: {
 	}
 }
 
-export async function prepareBet(p: PrepareBetPayload) {
+export async function prepareBet(p: PrepareBetPayload & { isAiMarket?: boolean }) {
 	const payload = PrepareBetSchema.parse(p);
 
-	const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/markets/ai/bets/tx`, payload, {
-	withCredentials: true,
-	headers: { "Content-Type": "application/json" },
+	// Use different endpoint based on market type
+	const endpoint = p.isAiMarket
+		? `${process.env.NEXT_PUBLIC_API_URL}/markets/ai/bets/tx`   // AI markets: place_bet_multi
+		: `${process.env.NEXT_PUBLIC_API_URL}/markets/bets/tx`;      // Pyth markets: place_bet
+
+	const { data } = await axios.post(endpoint, payload, {
+		withCredentials: true,
+		headers: { "Content-Type": "application/json" },
 	});
 
 	return PrepareBetResponseSchema.parse(data);

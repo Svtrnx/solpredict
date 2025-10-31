@@ -117,6 +117,12 @@ pub async fn create_market(
         return Err(AppError::bad_request("memo too long"));
     }
 
+    let recent_blockhash = state
+        .rpc
+        .get_latest_blockhash()
+        .await
+        .map_err(|e| AppError::Other(anyhow!("Failed to get blockhash: {e}")))?;
+
     let create_tx_b64 = tokio::task::spawn_blocking({
         let ctx = ctx.clone();
         let memo_owned = memo_str.clone();
@@ -133,6 +139,7 @@ pub async fn create_market(
                 side_onchain,
                 amount_tokens,
                 Some(memo_owned.as_bytes()),
+                recent_blockhash,
             )
         }
     })

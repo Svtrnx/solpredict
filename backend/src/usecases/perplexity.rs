@@ -112,20 +112,21 @@ impl PerplexityClient {
         let sources_json = serde_json::to_string(&srcs).unwrap();
         let rules = category_rules(category);
 
+        let cat_hint = match category {
+            MarketCategory::Politics => "Politics",
+            MarketCategory::War => "War",
+            MarketCategory::Finance => "Finance",
+        };
+
         let system = format!(
             r#"You normalize the user's question into market specs only.
                 {rules}
                 Output ONLY JSON per schema. No extra text.
-                
+
                 [LANGUAGE mandatory]
                 - The raw_question MUST be in English.
                 - If the question is not English → {{"accept": false, "reason": "Non-English question", "proposals": []}}
                 - All output fields (topic, shortText, description, criteria) MUST be in English only.
-
-                [CATEGORY soft]
-                - MATCH if overlaps: Politics / Military-Wars-Security / Foreign Policy / Sanctions-Trade-Economy.
-                - If clearly unrelated/abusive → {{"accept": false, "reason": "<short>", "proposals": []}}
-                - Else → {{"accept": true, "proposals": [exactly 3], "reason": ""}}
 
                 [QUESTION mandatory]
                 - Rewrite to a proper yes/no.
@@ -143,7 +144,13 @@ impl PerplexityClient {
                 - none → default to 23:59:59Z NEXT UTC day
 
                 [ACTOR remap]
-                - If an individual is named, remap to competent authority (e.g., sanctions → White House / U.S. Treasury (OFAC) / State Dept; strikes → DoD / U.S. Navy / White House). Normalize names (e.g., "Columbia"→"Colombia").
+                - If an individual is named, remap to the competent authority based on the ACTION TYPE:
+                • Sanctions/trade restrictions → White House / U.S. Treasury (OFAC) / State Dept
+                • Military strikes/operations → DoD / U.S. Military / Pentagon / White House
+                • Troop deployments/movements → DoD / Pentagon / White House / U.S. Military
+                • Weapons deliveries → DoD / State Dept / White House
+                - Normalize country names (e.g., "Columbia"→"Colombia").
+                - Keep the CORE ACTION from raw_question (troops→troops, sanctions→sanctions, strikes→strikes).
 
                 [EVIDENCE policy]
                 - Use precise verbs in description/criteria: announced/confirmed/signed/imposed/issued/delivered/arrived/conducted.
@@ -154,16 +161,12 @@ impl PerplexityClient {
                 - Provide 'criteria' with "Resolution criteria" and bullet points (*) concise & unambiguous.
 
                 [SOURCES]
-                - Pick ≥5 most-relevant from {s}; do not add others.
+                - Pick >=6 most-relevant from {s}; do not add others.
             "#,
             s = sources_json,
             rules = rules
         );
 
-        let cat_hint = match category {
-            MarketCategory::Politics => "Politics",
-            MarketCategory::War => "War",
-        };
         self.normalize_market_impl(&system, user_query, Some(cat_hint))
             .await
     }
@@ -257,7 +260,6 @@ impl PerplexityClient {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body_text) {
             if let Some(u) = v.get("usage") {
                 tracing::info!(target: "perplexity", usage = %u, "PPLX usage");
-                // Или конкретные поля:
                 if let (Some(pt), Some(ct), Some(tt)) = (
                     u.get("prompt_tokens").and_then(|x| x.as_u64()),
                     u.get("completion_tokens").and_then(|x| x.as_u64()),
@@ -303,7 +305,6 @@ impl PerplexityClient {
         end_time_utc: &str,          // "YYYY-MM-DD HH:MM:SS+00"
         accepted_sources: &[String], // allowlisted domains
     ) -> Result<(String, i16)> {
-        // messages строго по твоему примеру
         let system_msg = "Return ONLY a JSON object matching the schema. No extra text.";
         let user_msg = format!(
             "Topic:\n{{{topic}}}\n\nDescription:\n{{{description}}}\n\nResolution criteria (Markdown):\n{{{criteria}}}\n\nResolve strictly by {{{end_time}}} (UTC+0). Use ONLY content from the allowlisted domains. If no qualifying confirmation exists by the deadline per the rules above, return NO. Output must match the schema.",
@@ -343,7 +344,8 @@ impl PerplexityClient {
           "web_search_options": { "search_context_size": "low" }
         });
 
-        let resp = self.http
+        let resp = self
+            .http
             .post(&self.endpoint)
             .header(CONTENT_TYPE, "application/json")
             .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
@@ -368,7 +370,9 @@ impl PerplexityClient {
         let body: PplxChatCompletion = serde_json::from_str(&body_text)
             .map_err(|e| anyhow!("perplexity parse error: {e}. Raw: {}", body_text))?;
 
-        let first = body.choices.get(0)
+        let first = body
+            .choices
+            .get(0)
             .ok_or_else(|| anyhow!("no choices from perplexity"))?;
 
         let parsed: YesNoSchema = serde_json::from_str(&first.message.content)
@@ -376,7 +380,7 @@ impl PerplexityClient {
 
         let mapped = match parsed.answer.as_str() {
             "YES" => 0,
-            "NO"  => 1,
+            "NO" => 1,
             other => return Err(anyhow!("unexpected answer: {}", other)),
         };
 

@@ -15,14 +15,15 @@ import { cn } from "@/lib/utils"
 
 interface ResolutionStepperProps {
   onStartResolving: () => void
+  isAiMarket?: boolean
 }
 
-export function ResolutionStepper({ onStartResolving }: ResolutionStepperProps) {
+export function ResolutionStepper({ onStartResolving, isAiMarket = false }: ResolutionStepperProps) {
   const dispatch = useAppDispatch()
   const { isOpen, currentStep, steps, hasWarnings } = useAppSelector((state) => state.resolutionStepper)
   const [loading, setLoading] = useState(false)
 
-  const stepDefinitions = [
+  const pythStepDefinitions = [
     {
       id: 1,
       title: "Publishing Pyth Price Data",
@@ -45,6 +46,18 @@ export function ResolutionStepper({ onStartResolving }: ResolutionStepperProps) 
       icon: <TrendingUp className="w-5 h-5" />,
     },
   ]
+
+  const aiStepDefinitions = [
+    {
+      id: 1,
+      title: "Finalizing Market Resolution",
+      description:
+        "Executing the transaction to resolve the AI market. The smart contract finalizes the outcome based on the AI oracle's decision and determines the winning side. Rewards and outcomes are finalized on-chain.",
+      icon: <TrendingUp className="w-5 h-5" />,
+    },
+  ]
+
+  const stepDefinitions = isAiMarket ? aiStepDefinitions : pythStepDefinitions
 
   const allCompleted = steps.every((s) => s.status === "success" || s.status === "warning")
   const hasError = steps.some((s) => s.status === "error")
@@ -343,8 +356,17 @@ export function ResolutionStepper({ onStartResolving }: ResolutionStepperProps) 
                     </>
                   ) : (
                     <>
-                      The market has been resolved using a fully verified Pyth price feed. All participants can now
-                      claim their winnings.
+                      {isAiMarket ? (
+                        <>
+                          The market has been resolved using the AI oracle's decision. All participants can now claim
+                          their winnings.
+                        </>
+                      ) : (
+                        <>
+                          The market has been resolved using a fully verified Pyth price feed. All participants can now
+                          claim their winnings.
+                        </>
+                      )}
                     </>
                   )}
                 </p>

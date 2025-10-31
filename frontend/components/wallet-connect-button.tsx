@@ -73,6 +73,18 @@ export function WalletConnectButton({ className = "" }) {
   const waitingAutoConnect = !uiReady
   const sessionReady = status === "authenticated" && !!publicKey && user?.walletAddress === publicKey?.toBase58()
 
+  // Debug logging
+  useEffect(() => {
+    console.log("[WalletButton] Auth State:", {
+      status,
+      hasUser: !!user,
+      userWallet: user?.walletAddress,
+      publicKey: publicKey?.toBase58(),
+      sessionReady,
+      connected,
+    })
+  }, [status, user, publicKey, sessionReady, connected])
+
   useEffect(() => {
     if (!mounted) return
     const hasStored = typeof window !== "undefined" && !!localStorage.getItem("walletAdapter")
@@ -108,13 +120,26 @@ export function WalletConnectButton({ className = "" }) {
 
   useEffect(() => {
     if (status === "authenticated" && publicKey && user?.walletAddress === publicKey.toBase58()) {
+      console.log("[WalletButton] Setting authorized: true")
       dispatch(setAuthorized(true))
       dispatch(setConnecting(false))
     } else {
+      console.log("[WalletButton] Setting authorized: false", {
+        status,
+        hasPubkey: !!publicKey,
+        walletMatch: user?.walletAddress === publicKey?.toBase58(),
+      })
       dispatch(setConnecting(false))
       dispatch(setAuthorized(false))
     }
   }, [status, user?.walletAddress, publicKey, dispatch])
+
+  useEffect(() => {
+    if (connected && publicKey && status === "loading") {
+      console.log("[WalletButton] Wallet connected while auth loading, forcing refresh")
+      refresh()
+    }
+  }, [connected, publicKey, status, refresh])
 
   const handleConnect = useCallback(() => {
     // open wallet modal and ask to run SIWS after connect

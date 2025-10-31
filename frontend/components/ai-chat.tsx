@@ -1,11 +1,22 @@
 "use client"
 
-import { useEffect, useRef, useCallback, useTransition } from "react"
-import { useState } from "react"
-import { cn } from "@/lib/utils"
-import { ImageIcon, Figma, MonitorIcon, Paperclip, SendIcon, XIcon, LoaderIcon, Sparkles, Command } from "lucide-react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
+import {
+  SendIcon,
+  LoaderIcon,
+  XIcon,
+  Landmark,
+  Swords,
+  TrendingUp,
+} from "lucide-react"
+import { aiValidateStart, aiValidateResult } from "@/lib/services/market/marketService"
+import { ValidationStatusDisplay } from "./validation-status-display"
 import { motion, AnimatePresence } from "framer-motion"
-import * as React from "react"
+import type { AiValidateResult } from "@/lib/types"
+import { ShiningText } from "./ui/shining-text"
+import { showToast } from "./shared/show-toast"
+import { ColorOrb } from "./ui/color-orb"
+import { cn } from "@/lib/utils"
 
 interface UseAutoResizeTextareaProps {
   minHeight: number
@@ -49,13 +60,6 @@ function useAutoResizeTextarea({ minHeight, maxHeight }: UseAutoResizeTextareaPr
   return { textareaRef, adjustHeight }
 }
 
-interface CommandSuggestion {
-  icon: React.ReactNode
-  label: string
-  description: string
-  prefix: string
-}
-
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   containerClassName?: string
   showRing?: boolean
@@ -91,265 +95,261 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             transition={{ duration: 0.2 }}
           />
         )}
-
-        {props.onChange && (
-          <div
-            className="absolute bottom-2 right-2 opacity-0 w-2 h-2 bg-violet-500 rounded-full"
-            style={{
-              animation: "none",
-            }}
-            id="textarea-ripple"
-          />
-        )}
       </div>
     )
   },
 )
 Textarea.displayName = "Textarea"
 
-export function AnimatedAIChat() {
-  const [value, setValue] = useState("")
+interface AIChatProps {
+  onPromptSubmit: (prompt: string, category: string) => void
+}
+
+const categories = [
+  { value: "politics", label: "Politics", icon: Landmark, color: "blue" },
+  { value: "war", label: "War", icon: Swords, color: "red" },
+  { value: "finance", label: "Finance", icon: TrendingUp, color: "green" },
+]
+
+const PLACEHOLDERS = [
+  "Will Bitcoin reach $200,000 by end of 2025?",
+  "Will Man City win English Premier League?",
+  "Russia x Ukraine ceasefire in 2025?",
+  "Will SolPredict be launched in 2025?",
+  "Will Tesla (TSLA) beat quarterly earnings?",
+]
+
+export function AIChat({ onPromptSubmit }: AIChatProps) {
+  const [aiInputValue, setAiInputValue] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [attachments, setAttachments] = useState<string[]>([])
   const [isTyping, setIsTyping] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const [activeSuggestion, setActiveSuggestion] = useState<number>(-1)
-  const [showCommandPalette, setShowCommandPalette] = useState(false)
-  const [recentCommand, setRecentCommand] = useState<string | null>(null)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const [isSending, setIsSending] = useState(false)
+  const [inputFocused, setInputFocused] = useState(false)
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [showPlaceholder, setShowPlaceholder] = useState(true)
+  const [validationStatus, setValidationStatus] = useState<AiValidateResult | null>(null)
+  const [validationHash, setValidationHash] = useState<string | null>(null)
+  const pollingAbortControllerRef = useRef<AbortController | null>(null)
+
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 60,
     maxHeight: 200,
   })
-  const [inputFocused, setInputFocused] = useState(false)
-  const commandPaletteRef = useRef<HTMLDivElement>(null)
 
-  const commandSuggestions: CommandSuggestion[] = [
-    {
-      icon: <ImageIcon className="w-4 h-4" />,
-      label: "Clone UI",
-      description: "Generate a UI from a screenshot",
-      prefix: "/clone",
-    },
-    {
-      icon: <Figma className="w-4 h-4" />,
-      label: "Import Figma",
-      description: "Import a design from Figma",
-      prefix: "/figma",
-    },
-    {
-      icon: <MonitorIcon className="w-4 h-4" />,
-      label: "Create Page",
-      description: "Generate a new web page",
-      prefix: "/page",
-    },
-    {
-      icon: <Sparkles className="w-4 h-4" />,
-      label: "Improve",
-      description: "Improve existing UI design",
-      prefix: "/improve",
-    },
-  ]
+  const showPlaceholderText = !inputFocused && !aiInputValue
 
   useEffect(() => {
-    if (value.startsWith("/") && !value.includes(" ")) {
-      setShowCommandPalette(true)
+    if (!showPlaceholderText) return
 
-      const matchingSuggestionIndex = commandSuggestions.findIndex((cmd) => cmd.prefix.startsWith(value))
+    const interval = setInterval(() => {
+      setShowPlaceholder(false)
+      setTimeout(() => {
+        setPlaceholderIndex((prev) => (prev + 1) % PLACEHOLDERS.length)
+        setShowPlaceholder(true)
+      }, 400)
+    }, 5000)
 
-      if (matchingSuggestionIndex >= 0) {
-        setActiveSuggestion(matchingSuggestionIndex)
-      } else {
-        setActiveSuggestion(-1)
-      }
-    } else {
-      setShowCommandPalette(false)
-    }
-  }, [value])
+    return () => clearInterval(interval)
+  }, [showPlaceholderText])
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY })
-    }
-
-    window.addEventListener("mousemove", handleMouseMove)
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove)
+      if (pollingAbortControllerRef.current) {
+        pollingAbortControllerRef.current.abort()
+      }
     }
   }, [])
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node
-      const commandButton = document.querySelector("[data-command-button]")
+    if (!validationHash) return
 
-      if (
-        commandPaletteRef.current &&
-        !commandPaletteRef.current.contains(target) &&
-        !commandButton?.contains(target)
-      ) {
-        setShowCommandPalette(false)
-      }
-    }
+    const abortController = new AbortController()
+    pollingAbortControllerRef.current = abortController
 
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [])
+    const pollResult = async () => {
+      let expiredRetryCount = 0
+      const MAX_EXPIRED_RETRIES = 1
+      const EXPIRED_RETRY_DELAY = 2000
+      const NORMAL_POLL_DELAY = 1000
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showCommandPalette) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault()
-        setActiveSuggestion((prev) => (prev < commandSuggestions.length - 1 ? prev + 1 : 0))
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault()
-        setActiveSuggestion((prev) => (prev > 0 ? prev - 1 : commandSuggestions.length - 1))
-      } else if (e.key === "Tab" || e.key === "Enter") {
-        e.preventDefault()
-        if (activeSuggestion >= 0) {
-          const selectedCommand = commandSuggestions[activeSuggestion]
-          setValue(selectedCommand.prefix + " ")
-          setShowCommandPalette(false)
+      while (!abortController.signal.aborted) {
+        try {
+          const result = await aiValidateResult(validationHash)
 
-          setRecentCommand(selectedCommand.label)
-          setTimeout(() => setRecentCommand(null), 3500)
-        }
-      } else if (e.key === "Escape") {
-        e.preventDefault()
-        setShowCommandPalette(false)
-      }
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      if (value.trim()) {
-        handleSendMessage()
-      }
-    }
-  }
+          if (abortController.signal.aborted) break
 
-  const handleSendMessage = () => {
-    if (value.trim()) {
-      startTransition(() => {
-        setIsTyping(true)
-        setTimeout(() => {
+          if (result.status === "expired") {
+            if (expiredRetryCount < MAX_EXPIRED_RETRIES) {
+              expiredRetryCount++
+              console.log(`Expired status received, retry ${expiredRetryCount}/${MAX_EXPIRED_RETRIES}`)
+
+              if (!abortController.signal.aborted) {
+                await new Promise((resolve) => setTimeout(resolve, EXPIRED_RETRY_DELAY))
+              }
+              continue
+            } else {
+              setValidationStatus(result)
+              showToast("warning", "Validation request expired. Please try again.")
+              break
+            }
+          }
+
+          setValidationStatus(result)
+          expiredRetryCount = 0
+
+          if (result.status === "ready") {
+            setIsTyping(true)
+            abortController.abort()
+
+            if (result.data.accept) {
+              showToast("success", "Market proposals generated successfully!")
+            } else {
+              showToast("warning", `Market not accepted: ${result.data.reason || "Unknown reason"}`)
+            }
+            break
+          }
+
+          if (result.status === "rejected") {
+            setIsTyping(true)
+            showToast("warning", `Market rejected: ${result.reason}`)
+            break
+          }
+
+          if (result.status === "error") {
+            setIsTyping(true)
+            showToast("danger", `Validation error: ${result.error}`)
+            break
+          }
+
+          if (result.status === "pending") {
+            if (!abortController.signal.aborted) {
+              await new Promise((resolve) => setTimeout(resolve, NORMAL_POLL_DELAY))
+            }
+          }
+        } catch (error) {
+          if (abortController.signal.aborted) break
+
+          console.error("Error polling validation result:", error)
           setIsTyping(false)
-          setValue("")
-          adjustHeight(true)
-        }, 3000)
-      })
+          showToast("danger", "Failed to check validation status")
+          break
+        }
+      }
     }
-  }
 
-  const handleAttachFile = () => {
-    const mockFileName = `file-${Math.floor(Math.random() * 1000)}.pdf`
-    setAttachments((prev) => [...prev, mockFileName])
+    pollResult()
+
+    return () => {
+      abortController.abort()
+    }
+  }, [validationHash])
+
+  const handleAiPromptSubmit = async () => {
+    if (aiInputValue.trim()) {
+      if (aiInputValue.trim().length < 10) {
+        showToast("warning", "Please provide a more detailed market description (at least 10 characters)")
+        return
+      }
+
+      if (!selectedCategory) {
+        showToast("warning", "Please select a category!")
+        return
+      }
+
+      setIsSending(true)
+      setIsTyping(true)
+      setValidationStatus(null)
+      setValidationHash(null)
+
+      try {
+        const response = await aiValidateStart({
+          query: aiInputValue,
+          category: selectedCategory as "politics" | "war" | "finance",
+        })
+
+        setIsSending(false)
+
+        if (response.ok && response.hash) {
+          setValidationHash(response.hash)
+          showToast("success", "Validation started! Checking status...")
+        } else {
+          setIsTyping(false)
+          showToast("danger", "Failed to start validation")
+        }
+      } catch (error) {
+        console.error("Error starting validation:", error)
+        setIsSending(false)
+        setIsTyping(false)
+        showToast("danger", "Failed to start validation. Please try again.")
+      }
+    }
   }
 
   const removeAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const selectCommandSuggestion = (index: number) => {
-    const selectedCommand = commandSuggestions[index]
-    setValue(selectedCommand.prefix + " ")
-    setShowCommandPalette(false)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      if (aiInputValue.trim()) {
+        handleAiPromptSubmit()
+      }
+    }
+  }
 
-    setRecentCommand(selectedCommand.label)
-    setTimeout(() => setRecentCommand(null), 2000)
+  const placeholderContainerVariants = {
+    initial: {},
+    animate: { transition: { staggerChildren: 0.025 } },
+    exit: { transition: { staggerChildren: 0.015, staggerDirection: -1 } },
+  }
+
+  const letterVariants = {
+    initial: {
+      opacity: 0,
+      filter: "blur(12px)",
+      y: 10,
+    },
+    animate: {
+      opacity: 1,
+      filter: "blur(0px)",
+      y: 0,
+      transition: {
+        opacity: { duration: 0.25 },
+        filter: { duration: 0.4 },
+        y: { type: "spring" as const, stiffness: 80, damping: 20 },
+      },
+    },
+    exit: {
+      opacity: 0,
+      filter: "blur(12px)",
+      y: -10,
+      transition: {
+        opacity: { duration: 0.2 },
+        filter: { duration: 0.3 },
+        y: { type: "spring" as const, stiffness: 80, damping: 20 },
+      },
+    },
   }
 
   return (
-    <div className="min-h-screen flex flex-col w-full items-center justify-center bg-transparent text-white p-6 relative overflow-hidden">
-      <div className="absolute inset-0 w-full h-full overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-500/10 rounded-full mix-blend-normal filter blur-[128px] animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full mix-blend-normal filter blur-[128px] animate-pulse delay-700" />
-        <div className="absolute top-1/4 right-1/3 w-64 h-64 bg-fuchsia-500/10 rounded-full mix-blend-normal filter blur-[96px] animate-pulse delay-1000" />
-      </div>
-      <div className="w-full max-w-2xl mx-auto relative">
-        <motion.div
-          className="relative z-10 space-y-12"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-        >
-          <div className="text-center space-y-3">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-              className="inline-block"
-            >
-              <h1 className="text-3xl font-medium tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white/90 to-white/40 pb-1">
-                How can I help today?
-              </h1>
-              <motion.div
-                className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: "100%", opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.8 }}
-              />
-            </motion.div>
-            <motion.p
-              className="text-sm text-white/40"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              Type a command or ask a question
-            </motion.p>
-          </div>
-
-          <motion.div
-            className="relative backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/[0.05] shadow-2xl"
-            initial={{ scale: 0.98 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.1 }}
-          >
-            <AnimatePresence>
-              {showCommandPalette && (
-                <motion.div
-                  ref={commandPaletteRef}
-                  className="absolute left-4 right-4 bottom-full mb-2 backdrop-blur-xl bg-black/90 rounded-lg z-50 shadow-lg border border-white/10 overflow-hidden"
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 5 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <div className="py-1 bg-black/95">
-                    {commandSuggestions.map((suggestion, index) => (
-                      <motion.div
-                        key={suggestion.prefix}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer",
-                          activeSuggestion === index ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5",
-                        )}
-                        onClick={() => selectCommandSuggestion(index)}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: index * 0.03 }}
-                      >
-                        <div className="w-5 h-5 flex items-center justify-center text-white/60">{suggestion.icon}</div>
-                        <div className="font-medium">{suggestion.label}</div>
-                        <div className="text-white/40 text-xs ml-1">{suggestion.prefix}</div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="p-4">
+    <div className="w-full max-w-2xl mx-auto relative">
+      <div className="relative z-10 space-y-12">
+        <div className="relative backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/[0.05] shadow-2xl overflow-hidden">
+          <div className="p-4">
+            <div className="relative">
               <Textarea
                 ref={textareaRef}
-                value={value}
+                value={aiInputValue}
                 onChange={(e) => {
-                  setValue(e.target.value)
+                  setAiInputValue(e.target.value)
                   adjustHeight()
                 }}
                 onKeyDown={handleKeyDown}
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
-                placeholder="Ask zap a question..."
+                placeholder=""
                 containerClassName="w-full"
                 className={cn(
                   "w-full px-4 py-3",
@@ -366,85 +366,112 @@ export function AnimatedAIChat() {
                 }}
                 showRing={false}
               />
-            </div>
-
-            <AnimatePresence>
-              {attachments.length > 0 && (
-                <motion.div
-                  className="px-4 pb-3 flex gap-2 flex-wrap"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                >
-                  {attachments.map((file, index) => (
-                    <motion.div
-                      key={index}
-                      className="flex items-center gap-2 text-xs bg-white/[0.03] py-1.5 px-3 rounded-lg text-white/70"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
+              <div className="absolute left-4 top-3 pointer-events-none">
+                <AnimatePresence mode="wait">
+                  {showPlaceholder && showPlaceholderText && (
+                    <motion.span
+                      key={placeholderIndex}
+                      className="text-white/20 select-none text-sm"
+                      style={{
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                      variants={placeholderContainerVariants}
+                      initial="initial"
+                      animate="animate"
+                      exit="exit"
                     >
-                      <span>{file}</span>
-                      <button
-                        onClick={() => removeAttachment(index)}
-                        className="text-white/40 hover:text-white transition-colors"
-                      >
-                        <XIcon className="w-3 h-3" />
-                      </button>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="p-4 border-t border-white/[0.05] flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <motion.button
-                  type="button"
-                  onClick={handleAttachFile}
-                  whileTap={{ scale: 0.94 }}
-                  className="p-2 text-white/40 hover:text-white/90 rounded-lg transition-colors relative group"
-                >
-                  <Paperclip className="w-4 h-4" />
-                  <motion.span
-                    className="absolute inset-0 bg-white/[0.05] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    layoutId="button-highlight"
-                  />
-                </motion.button>
-                <motion.button
-                  type="button"
-                  data-command-button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowCommandPalette((prev) => !prev)
-                  }}
-                  whileTap={{ scale: 0.94 }}
-                  className={cn(
-                    "p-2 text-white/40 hover:text-white/90 rounded-lg transition-colors relative group",
-                    showCommandPalette && "bg-white/10 text-white/90",
+                      {PLACEHOLDERS[placeholderIndex].split("").map((char, i) => (
+                        <motion.span key={i} variants={letterVariants} style={{ display: "inline-block" }}>
+                          {char === " " ? "\u00A0" : char}
+                        </motion.span>
+                      ))}
+                    </motion.span>
                   )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {attachments.length > 0 && (
+              <motion.div
+                className="px-4 pb-3 flex gap-2 flex-wrap"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                {attachments.map((file, index) => (
+                  <motion.div
+                    key={index}
+                    className="flex items-center gap-2 text-xs bg-white/[0.03] py-1.5 px-3 rounded-lg text-white/70"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                  >
+                    <span>{file}</span>
+                    <button
+                      onClick={() => removeAttachment(index)}
+                      className="text-white/40 hover:text-white transition-colors"
+                    >
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="w-full flex justify-start items-center text-sm">
+            <div className="p-4 border-t border-white/[0.05] flex items-center justify-between gap-4 w-full">
+              <div className="relative flex-1 min-w-0">
+                <div
+                  className="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent hover:scrollbar-thumb-white/20 p-1"
+                  style={{
+                    scrollbarWidth: "thin",
+                    scrollBehavior: "smooth",
+                  }}
                 >
-                  <Command className="w-4 h-4" />
-                  <motion.span
-                    className="absolute inset-0 bg-white/[0.05] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    layoutId="button-highlight"
-                  />
-                </motion.button>
+                  {categories.map((category) => {
+                    const Icon = category.icon
+                    const isSelected = selectedCategory === category.value
+                    return (
+                      <motion.button
+                        key={category.value}
+                        type="button"
+                        onClick={() => setSelectedCategory(category.value)}
+                        whileTap={{ scale: 0.94 }}
+                        className={cn(
+                          "p-2 rounded-lg transition-all relative group flex items-center gap-1.5 text-xs flex-shrink-0 cursor-pointer",
+                          isSelected
+                            ? "bg-white/10 text-white/90 ring-1 ring-white/20"
+                            : "text-white/40 hover:text-white/90 hover:bg-white/[0.05]",
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span className="font-medium whitespace-nowrap">{category.label}</span>
+                      </motion.button>
+                    )
+                  })}
+                </div>
               </div>
 
               <motion.button
                 type="button"
-                onClick={handleSendMessage}
+                onClick={handleAiPromptSubmit}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                disabled={isTyping || !value.trim()}
+                disabled={isSending || !aiInputValue.trim()}
                 className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                  "flex items-center gap-2",
-                  value.trim() ? "bg-white text-[#0A0A0B] shadow-lg shadow-white/10" : "bg-white/[0.05] text-white/40",
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer",
+                  "flex items-center gap-2 flex-shrink-0",
+                  aiInputValue.trim()
+                    ? "bg-white text-[#0A0A0B] shadow-lg shadow-white/10"
+                    : "bg-white/[0.05] text-white/40",
                 )}
               >
-                {isTyping ? (
+                {isSending ? (
                   <LoaderIcon className="w-4 h-4 animate-[spin_2s_linear_infinite]" />
                 ) : (
                   <SendIcon className="w-4 h-4" />
@@ -452,114 +479,40 @@ export function AnimatedAIChat() {
                 <span>Send</span>
               </motion.button>
             </div>
-          </motion.div>
-
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {commandSuggestions.map((suggestion, index) => (
-              <motion.button
-                key={suggestion.prefix}
-                onClick={() => selectCommandSuggestion(index)}
-                className="flex items-center gap-2 px-3 py-2 bg-white/[0.02] hover:bg-white/[0.05] rounded-lg text-sm text-white/60 hover:text-white/90 transition-all relative group"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                {suggestion.icon}
-                <span>{suggestion.label}</span>
-                <motion.div
-                  className="absolute inset-0 border border-white/[0.05] rounded-lg"
-                  initial={false}
-                  animate={{
-                    opacity: [0, 1],
-                    scale: [0.98, 1],
-                  }}
-                  transition={{
-                    duration: 0.3,
-                    ease: "easeOut",
-                  }}
-                />
-              </motion.button>
-            ))}
           </div>
-        </motion.div>
+        </div>
       </div>
 
       <AnimatePresence>
         {isTyping && (
           <motion.div
-            className="fixed bottom-8 mx-auto transform -translate-x-1/2 backdrop-blur-2xl bg-white/[0.02] rounded-full px-4 py-2 shadow-lg border border-white/[0.05]"
+            className="mt-6 mx-auto backdrop-blur-2xl bg-white/[0.02] rounded-2xl shadow-lg border border-white/[0.05] overflow-hidden"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-7 rounded-full bg-white/[0.05] flex items-center justify-center text-center">
-                <span className="text-xs font-medium text-white/90 mb-0.5">zap</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-white/70">
-                <span>Thinking</span>
-                <TypingDots />
-              </div>
+            <div className="p-4">
+              {validationStatus ? (
+                <ValidationStatusDisplay
+                  status={validationStatus}
+                  validationHash={validationHash || ""}
+                />
+              ) : (
+                <div className="flex items-center gap-4 p-4">
+                  <div className="w-8 h-7 rounded-full bg-white/[0.05] flex items-center justify-center text-center">
+                    <ColorOrb dimension="24px" tones={{ base: "oklch(22.64% 0 0)" }} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 text-sm text-white/70">
+                      <ShiningText text={"Starting validation..."} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {inputFocused && (
-        <motion.div
-          className="fixed w-[50rem] h-[50rem] rounded-full pointer-events-none z-0 opacity-[0.02] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 blur-[96px]"
-          animate={{
-            x: mousePosition.x - 400,
-            y: mousePosition.y - 400,
-          }}
-          transition={{
-            type: "spring",
-            damping: 25,
-            stiffness: 150,
-            mass: 0.5,
-          }}
-        />
-      )}
     </div>
   )
-}
-
-function TypingDots() {
-  return (
-    <div className="flex items-center ml-1">
-      {[1, 2, 3].map((dot) => (
-        <motion.div
-          key={dot}
-          className="w-1.5 h-1.5 bg-white/90 rounded-full mx-0.5"
-          initial={{ opacity: 0.3 }}
-          animate={{
-            opacity: [0.3, 0.9, 0.3],
-            scale: [0.85, 1.1, 0.85],
-          }}
-          transition={{
-            duration: 1.2,
-            repeat: Number.POSITIVE_INFINITY,
-            delay: dot * 0.15,
-            ease: "easeInOut",
-          }}
-          style={{
-            boxShadow: "0 0 4px rgba(255, 255, 255, 0.3)",
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-const rippleKeyframes = `
-@keyframes ripple {
-  0% { transform: scale(0.5); opacity: 0.6; }
-  100% { transform: scale(2); opacity: 0; }
-}
-`
-
-if (typeof document !== "undefined") {
-  const style = document.createElement("style")
-  style.innerHTML = rippleKeyframes
-  document.head.appendChild(style)
 }

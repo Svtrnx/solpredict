@@ -88,6 +88,7 @@ pub fn build_create_and_seed(
     seed_side: onchain::types::Side,
     seed_amount: u64,
     memo_opt: Option<&[u8]>,
+    recent_blockhash: Hash,
 ) -> Result<String> {
     let program = program(ctx)?;
     let mint = onchain::constants::USDC_MINT;
@@ -160,9 +161,8 @@ pub fn build_create_and_seed(
         ixs.push(spl_memo::build_memo(memo_bytes, &[]));
     }
 
-    let bh = latest_blockhash(&program)?;
     let mut tx = Transaction::new_with_payer(&ixs, Some(&user_pubkey));
-    tx.message.recent_blockhash = bh;
+    tx.message.recent_blockhash = recent_blockhash;
 
     encode_unsigned_tx(&tx)
 }
@@ -177,7 +177,16 @@ pub fn build_create_market_ai_binary_unsigned(
 ) -> Result<(String, Pubkey)> {
     let program = program(ctx)?;
     let oracle_kind = onchain::types::OracleKind::Ai as u8;
-    let (market_pda, _) = pda_market_ai(&authority, end_ts, oracle_kind);
+
+    // Generate unique salt from current timestamp and nanos to prevent PDA collisions
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let mut salt = [0u8; 8];
+    let timestamp_nanos = now.as_nanos() as u64;
+    salt.copy_from_slice(&timestamp_nanos.to_le_bytes());
+
+    let (market_pda, _) = pda_market_ai(&authority, end_ts, oracle_kind, &salt);
     let (config_pda, _) = pda_config();
 
     let ixs_main = program
@@ -194,6 +203,7 @@ pub fn build_create_market_ai_binary_unsigned(
                 num_outcomes: 2,
                 end_ts,
                 ai_oracle_authority,
+                salt,
             }
         })
         .instructions()?;

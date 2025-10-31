@@ -90,6 +90,15 @@ pub struct MarketDto {
     pub creator: String,
     pub settler: Option<String>,
     pub status: MarketStatusDto,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_description: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_criteria_md: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_accepted_sources: Option<Vec<String>>,
 }
 
 #[derive(serde::Serialize)]
@@ -208,7 +217,6 @@ impl From<&MarketRow> for TitleSpec {
 // ========== Mapping Row -> DTO ==========
 impl From<MarketRow> for MarketDto {
     fn from(r: MarketRow) -> Self {
-        // YES/NO цены как было
         let yes = r.price_yes_bp.map(|bp| (bp as f64) / 10_000.0).unwrap_or(0.5);
         let no = (1.0 - yes).max(0.0);
 
@@ -225,6 +233,13 @@ impl From<MarketRow> for MarketDto {
         } else {
             generate_title(&TitleSpec::from(&r))
         };
+
+        let (ai_description, ai_criteria_md, ai_accepted_sources) =
+            if r.market_kind.as_deref() == Some("ai") {
+                (r.ai_description, r.ai_criteria_md, r.ai_accepted_sources)
+            } else {
+                (None, None, None)
+            };
 
         MarketDto {
             id: r.id.to_string(),
@@ -245,6 +260,10 @@ impl From<MarketRow> for MarketDto {
             creator: r.creator,
             settler: r.resolver_pubkey,
             status,
+
+            ai_description,
+            ai_criteria_md,
+            ai_accepted_sources,
         }
     }
 }

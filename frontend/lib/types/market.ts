@@ -112,6 +112,10 @@ export const MarketSchema = z.object({
   creator: z.string(),
   settler: z.string().optional().nullable(),
   status: z.enum(["open", "locked", "settled", "void"]),
+  // AI market fields
+  aiDescription: z.string().optional(),
+  aiCriteriaMd: z.string().optional(),
+  aiAcceptedSources: z.array(z.string()).optional(),
 });
 export type Market = z.infer<typeof MarketSchema>;
 
@@ -167,7 +171,7 @@ export const PrepareClaimResponseSchema = z.object({
 });
 export type PrepareClaimResponse = z.infer<typeof PrepareClaimResponseSchema>;
 
-export const MarketCategorySchema = z.enum(["politics", "war"])
+export const MarketCategorySchema = z.enum(["politics", "war", "finance"])
 export type MarketCategory = z.infer<typeof MarketCategorySchema>
 
 export const AiValidateStartReqSchema = z.object({

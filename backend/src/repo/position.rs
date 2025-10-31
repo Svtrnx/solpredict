@@ -257,7 +257,7 @@ pub async fn apply_bet_to_position(
     pool: &PgPool,
     market_id: Uuid,
     user_pubkey: &str,
-    side_yes: bool,
+    outcome_idx: u8,
     amount_1e6: i64,
 ) -> anyhow::Result<()> {
     if user_pubkey.is_empty() {
@@ -280,59 +280,115 @@ pub async fn apply_bet_to_position(
         .await
         .context("Failed to set transaction isolation level")?;
 
-    let (yes_delta, no_delta) = if side_yes {
-        (amount_1e6, 0)
-    } else {
-        (0, amount_1e6)
-    };
+    if outcome_idx <= 1 {
+        let (yes_delta, no_delta) = if outcome_idx == 0 {
+            (amount_1e6, 0)
+        } else {
+            (0, amount_1e6)
+        };
 
-    sqlx::query!(
-        r#"
-      INSERT INTO market_positions (
-        market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim
-      )
-      VALUES ($1, $2, $3, $4, FALSE, NULL)
-      ON CONFLICT (market_id, user_pubkey) DO UPDATE
-      SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
-          no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
-      "#,
-        market_id,
-        user_pubkey,
-        yes_delta,
-        no_delta
-    )
-    .execute(&mut *tx)
-    .await?;
+        sqlx::query!(
+            r#"
+          INSERT INTO market_positions (
+            market_id, user_pubkey, yes_bet_1e6, no_bet_1e6, claimed, tx_sig_claim
+          )
+          VALUES ($1, $2, $3, $4, FALSE, NULL)
+          ON CONFLICT (market_id, user_pubkey) DO UPDATE
+          SET yes_bet_1e6 = market_positions.yes_bet_1e6 + EXCLUDED.yes_bet_1e6,
+              no_bet_1e6  = market_positions.no_bet_1e6  + EXCLUDED.no_bet_1e6
+          "#,
+            market_id,
+            user_pubkey,
+            yes_delta,
+            no_delta
+        )
+        .execute(&mut *tx)
+        .await?;
 
-    sqlx::query!(
-        r#"
-      UPDATE market_state
-      SET
-        yes_total_1e6    = yes_total_1e6 + $2,
-        no_total_1e6     = no_total_1e6  + $3,
-        total_volume_1e6 = total_volume_1e6 + $4,
-        participants     = (
-          SELECT COUNT(DISTINCT user_pubkey)
-          FROM market_positions
+        sqlx::query!(
+            r#"
+          UPDATE market_state
+          SET
+            yes_total_1e6    = yes_total_1e6 + $2,
+            no_total_1e6     = no_total_1e6  + $3,
+            total_volume_1e6 = total_volume_1e6 + $4,
+            participants     = (
+              SELECT COUNT(DISTINCT user_pubkey)
+              FROM market_positions
+              WHERE market_id = $1
+            ),
+            updated_at       = NOW()
           WHERE market_id = $1
-        ),
-        updated_at       = NOW()
-      WHERE market_id = $1
-      "#,
-        market_id,
-        yes_delta,
-        no_delta,
-        amount_1e6
-    )
-    .execute(&mut *tx)
-    .await?;
+          "#,
+            market_id,
+            yes_delta,
+            no_delta,
+            amount_1e6
+        )
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        // Multi-outcome market
+        let outcome_idx_i16 = outcome_idx as i16;
+
+        sqlx::query!(
+            r#"
+          INSERT INTO market_positions_multi (
+            market_id, user_pubkey, outcome_idx, stake_1e6, claimed, tx_sig_claim
+          )
+          VALUES ($1, $2, $3, $4, FALSE, NULL)
+          ON CONFLICT (market_id, user_pubkey, outcome_idx) DO UPDATE
+          SET stake_1e6 = market_positions_multi.stake_1e6 + EXCLUDED.stake_1e6
+          "#,
+            market_id,
+            user_pubkey,
+            outcome_idx_i16,
+            amount_1e6
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // Update tvl_per_outcome_1e6 array
+        sqlx::query!(
+            r#"
+          UPDATE market_state
+          SET
+            tvl_per_outcome_1e6 = jsonb_set(
+              COALESCE(tvl_per_outcome_1e6, '[]'::jsonb),
+              ARRAY[$2::text],
+              to_jsonb(COALESCE((tvl_per_outcome_1e6->$2)::bigint, 0) + $3),
+              true
+            ),
+            total_volume_1e6 = total_volume_1e6 + $3,
+            participants = (
+              SELECT COUNT(DISTINCT user_pubkey)
+              FROM market_positions_multi
+              WHERE market_id = $1
+            ),
+            updated_at = NOW()
+          WHERE market_id = $1
+          "#,
+            market_id,
+            outcome_idx_i16.to_string(),
+            amount_1e6
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
 
     tx.commit().await?;
+
+    let side_str = match outcome_idx {
+        0 => "yes",
+        1 => "no",
+        _ => "custom",
+    };
 
     tracing::info!(
       market_id = %market_id,
       user = %user_pubkey,
-      side = if side_yes { "yes" } else { "no" },
+      outcome_idx = outcome_idx,
+      side = side_str,
       amount = amount_1e6,
       "Position updated successfully"
     );

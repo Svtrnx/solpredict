@@ -14,14 +14,15 @@ import Link from "next/link"
 
 interface MarketCreationStepperProps {
   onStartCreating: () => Promise<void>
+  isAiMarket?: boolean
 }
 
-export function MarketCreationStepper({ onStartCreating }: MarketCreationStepperProps) {
+export function MarketCreationStepper({ onStartCreating, isAiMarket = false }: MarketCreationStepperProps) {
   const dispatch = useAppDispatch()
   const { isOpen, currentStep, steps, hasWarnings, marketPda } = useAppSelector((state) => state.marketCreationStepper)
   const [loading, setLoading] = useState(false)
 
-  const stepDefinitions = [
+  const pythStepDefinitions = [
     {
       id: 1,
       title: "Fetching Pyth Price Data",
@@ -38,10 +39,24 @@ export function MarketCreationStepper({ onStartCreating }: MarketCreationStepper
     },
   ]
 
-  const allCompleted = steps.every((s) => s.status === "success" || s.status === "warning")
-  const hasError = steps.some((s) => s.status === "error")
-  const isProcessing = steps.some((s) => s.status === "active")
-  const isWarningScreen = steps.every((s) => s.status === "pending")
+  const aiStepDefinitions = [
+    {
+      id: 1,
+      title: "Signing Transaction",
+      description:
+        "Creating and signing the AI market creation transaction on the blockchain. Please confirm the transaction in your wallet to complete the market creation.",
+      icon: <FileSignature className="w-5 h-5" />,
+    },
+  ]
+
+  const stepDefinitions = isAiMarket ? aiStepDefinitions : pythStepDefinitions
+
+  const activeSteps = steps.slice(0, stepDefinitions.length)
+
+  const allCompleted = activeSteps.every((s) => s.status === "success" || s.status === "warning")
+  const hasError = activeSteps.some((s) => s.status === "error")
+  const isProcessing = activeSteps.some((s) => s.status === "active")
+  const isWarningScreen = activeSteps.every((s) => s.status === "pending")
 
   const currentView = isWarningScreen ? "warning" : allCompleted ? "complete" : "processing"
 
@@ -336,8 +351,17 @@ export function MarketCreationStepper({ onStartCreating }: MarketCreationStepper
                     </>
                   ) : (
                     <>
-                      Your market has been successfully created with a verified Pyth price feed. Users can now start
-                      participating in your market.
+                      {isAiMarket ? (
+                        <>
+                          Your AI oracle market has been successfully created. Users can now start participating in your
+                          market.
+                        </>
+                      ) : (
+                        <>
+                          Your market has been successfully created with a verified Pyth price feed. Users can now start
+                          participating in your market.
+                        </>
+                      )}
                     </>
                   )}
                 </p>

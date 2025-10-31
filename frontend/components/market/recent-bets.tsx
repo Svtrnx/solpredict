@@ -149,7 +149,6 @@ export const RecentBets = ({ marketPda }: { marketPda: string }) => {
       <Card className="glass glow">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Users className="w-5 h-5 text-purple-400" />
             <span>Recent Bets</span>
           </CardTitle>
         </CardHeader>

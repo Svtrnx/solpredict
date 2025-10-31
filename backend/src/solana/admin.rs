@@ -60,7 +60,7 @@ pub fn update_config(
 ) -> Result<Signature> {
     let program = program(ctx)?;
     let (config_pda, _) = pda_config();
-    
+
     let sig = program
         .request()
         .accounts(onchain::accounts::UpdateConfig {
@@ -76,7 +76,28 @@ pub fn update_config(
         })
         .signer(admin)
         .send()?;
-    
+
+    Ok(sig)
+}
+
+/// Close config account (returns rent to admin)
+pub fn close_config(
+    ctx: &AnchorCtx,
+    admin: &Keypair,
+) -> Result<Signature> {
+    let program = program(ctx)?;
+    let (config_pda, _) = pda_config();
+
+    let sig = program
+        .request()
+        .accounts(onchain::accounts::CloseConfig {
+            admin: admin.pubkey(),
+            config: config_pda,
+        })
+        .args(onchain::instruction::CloseConfig {})
+        .signer(admin)
+        .send()?;
+
     Ok(sig)
 }
 

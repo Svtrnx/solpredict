@@ -110,17 +110,25 @@ pub async fn list(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("db error: {e}")))?;    
 
-    let items = page.items.into_iter().map(|m| MarketDtoV2 {
-        id: m.id,
-        title: generate_title(&TitleSpec::from(&m)),
-        market_pda: m.market_pda,
-        category: m.category,
-        total_volume: (m.total_volume_1e6 as f64) / 1_000_000.0,
-        participants: m.participants,
-        yes_price: (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
-        no_price: 1.0 - (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
-        end_date: m.end_date_utc.to_rfc3339(),
-        status: m.status,
+    let items = page.items.into_iter().map(|m| {
+        let title = if m.market_kind.as_deref() == Some("ai") {
+            m.ai_topic.clone().unwrap_or_else(|| generate_title(&TitleSpec::from(&m)))
+        } else {
+            generate_title(&TitleSpec::from(&m))
+        };
+
+        MarketDtoV2 {
+            id: m.id,
+            title,
+            market_pda: m.market_pda,
+            category: m.category,
+            total_volume: (m.total_volume_1e6 as f64) / 1_000_000.0,
+            participants: m.participants,
+            yes_price: (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
+            no_price: 1.0 - (m.price_yes_bp.unwrap_or(0) as f64) / 10_000.0,
+            end_date: m.end_date_utc.to_rfc3339(),
+            status: m.status,
+        }
     }).collect();
 
     Ok(Json(MarketsPageResponse { ok: true, items, next_cursor: page.next_cursor }))

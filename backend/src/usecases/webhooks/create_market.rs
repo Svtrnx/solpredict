@@ -322,6 +322,7 @@ pub async fn handle_multi(
     let category_text = match category {
         MarketCategoryAi::Politics => "politics",
         MarketCategoryAi::War      => "war",
+        MarketCategoryAi::Finance  => "finance",
     };
 
     let end_dt = OffsetDateTime::parse(&proposal.end_time_utc, &Rfc3339)
