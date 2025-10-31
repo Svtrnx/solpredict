@@ -14,27 +14,32 @@ const ITEMS = [
   {
     title: "What is SolPredict",
     content:
-      "SolPredict is a decentralized prediction market built on the Solana blockchain. It allows users to create, trade, and resolve markets on real-world events with full transparency, instant transactions, and on-chain payouts.",
+      "SolPredict is a decentralized prediction market built on Solana with a hybrid dual-oracle resolution system. It combines AI oracle for custom events and Pyth Network for price feeds, allowing users to create, trade, and resolve markets on real-world events with full transparency, instant transactions, and on-chain payouts.",
+  },
+  {
+    title: "What is the Dual Oracle System?",
+    content:
+      "SolPredict uses two oracle types: AI Oracle for resolving custom events like politics, sports, and world events through cryptographic attestation; and Pyth Oracle for price-based markets using real-time verified price feeds. This hybrid approach ensures trustless resolution for any type of prediction market.",
   },
   {
     title: "How is it different from other markets?",
     content:
-      "SolPredict stands out through decentralization, speed, and gamification. Built on Solana, it delivers lightning-fast transactions and full self-custody with no intermediaries. Beyond trading, users can climb ranks, earn achievements, and compete on leaderboards — making predictions fun, transparent, and rewarding.",
+      "SolPredict stands out with its unique AI-powered resolution system for custom events, combined with Pyth Network for price feeds. Built on Solana, it delivers lightning-fast transactions, full self-custody, and supports multi-outcome markets (2-5 outcomes). Users can also climb ranks, earn achievements, and compete on leaderboards — making predictions fun, transparent, and rewarding.",
   },
   {
     title: "How can I earn on SolPredict?",
     content:
-      "Any user who resolves a market earns 0.05% of the total market pool as a resolver reward. You can also earn by accurately predicting outcomes or by creating markets that attract participants — every action on SolPredict is designed to reward engagement and transparency.",
+      "Any user who resolves a market earns 0.1% of the total market pool as a resolver reward. You can also earn by accurately predicting outcomes or by creating markets that attract participants — every action on SolPredict is designed to reward engagement and transparency.",
   },
   {
-    title: "How does SolPredict work?",
+    title: "How does resolution work?",
     content:
-      "Users buy YES/NO shares on outcomes, and their funds are locked in an on-chain escrow until resolution. When the event resolves via Pyth oracle data, winners receive automatic payouts from the pooled escrow. It's fully non-custodial and fast thanks to Solana.",
+      "Markets resolve through our dual-oracle system: Pyth-based markets automatically resolve using verified price data from Pyth Network, while AI-based markets resolve through our AI oracle which analyzes the event outcome and provides cryptographic attestation. Both methods ensure trustless, transparent resolution with automatic on-chain payouts to winners.",
   },
   {
     title: "Why trust SolPredict?",
     content:
-      "SolPredict runs fully on-chain using smart contracts audited for transparency. All funds remain in escrow, results come from Pyth's verified data feeds, and no centralized entity can alter outcomes.",
+      "SolPredict runs fully on-chain using smart contracts with transparent logic. All funds remain in escrow, Pyth markets use verified price feeds, and AI markets use cryptographically signed attestations. No centralized entity can alter outcomes, and all resolutions are verifiable on-chain.",
   },
 ]
 
@@ -64,7 +69,7 @@ export const RadixAccordion = ({
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        Features
+        Frequently Asked Questions
       </motion.h2>
       <Accordion
         type={multiple ? "multiple" : "single"}

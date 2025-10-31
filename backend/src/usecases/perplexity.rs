@@ -116,6 +116,7 @@ impl PerplexityClient {
             MarketCategory::Politics => "Politics",
             MarketCategory::War => "War",
             MarketCategory::Finance => "Finance",
+            MarketCategory::Sports => "Sports",
         };
 
         let system = format!(
@@ -161,7 +162,7 @@ impl PerplexityClient {
                 - Provide 'criteria' with "Resolution criteria" and bullet points (*) concise & unambiguous.
 
                 [SOURCES]
-                - Pick >=6 most-relevant from {s}; do not add others.
+                - Pick >=7 most-relevant from {s}; do not add others.
             "#,
             s = sources_json,
             rules = rules
@@ -185,7 +186,7 @@ impl PerplexityClient {
             "proposals": {
               "type": "array",
               "minItems": 0,
-              "maxItems": 2,
+              "maxItems": 3,
               "items": {
                 "type": "object",
                 "properties": {
@@ -198,7 +199,7 @@ impl PerplexityClient {
                     "minItems": 2,
                     "items": { "type": "string" }
                   },
-                  "shortText": { "type": "string", "maxLength": 80 }
+                  "shortText": { "type": "string", "maxLength": 120 }
                 },
                 "required": ["topic", "description", "criteria", "end_time_utc", "accepted_sources", "shortText"],
                 "additionalProperties": false
@@ -220,7 +221,7 @@ impl PerplexityClient {
             stream: false,
             temperature: 0,
             top_p: 0.1,
-            max_tokens: 1200,
+            max_tokens: 2000,
             disable_search: true,
             language_preference: Some("en"),
             response_format: ResponseFormat {

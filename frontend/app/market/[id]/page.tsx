@@ -799,10 +799,10 @@ export default function MarketPage() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">Resolver Fee</span>
                             <span className="text-2xl font-bold text-purple-400">
-                              {(market.totalVolume * 0.0005).toFixed(2)}
+                              {(market.totalVolume * 0.001).toFixed(2)}
                             </span>
                           </div>
-                          <div className="text-xs text-muted-foreground/70">0.05% of total volume</div>
+                          <div className="text-xs text-muted-foreground/70">0.1% of total volume</div>
                         </div>
                       </div>
                       <div className="glass p-3 rounded-lg border border-border/40 w-full">
@@ -871,10 +871,10 @@ export default function MarketPage() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">Resolver Fee</span>
                             <span className="text-2xl font-bold text-purple-400">
-                              {(market.totalVolume * 0.0005).toFixed(2)}
+                              {(market.totalVolume * 0.001).toFixed(2)}
                             </span>
                           </div>
-                          <div className="text-xs text-muted-foreground/70">You'll earn 0.05% of total volume</div>
+                          <div className="text-xs text-muted-foreground/70">You'll earn 0.1% of total volume</div>
                         </div>
                       </div>
                       <div className="glass p-3 rounded-lg border border-border/40 w-full">

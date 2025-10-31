@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 
 const FEE_BPS = 100 // 1.00%
-const RESOLVER_BPS = 5 // 0.05%
+const RESOLVER_BPS = 10 // 0.1%
 
 type ActiveBetsTabProps = {
   activeBets: Bet[]
@@ -381,7 +381,7 @@ export function ActiveBetsTab({ activeBets, isOwner }: ActiveBetsTabProps) {
                               <span className="font-bold text-rose-400">-{claimInfo.marketFee.toFixed(2)} USDC</span>
                             </div>
                             <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-muted-foreground">Resolver Fee (0.05%)</span>
+                              <span className="text-muted-foreground">Resolver Fee (0.1%)</span>
                               <span className="font-bold text-rose-400">-{claimInfo.resolverFee.toFixed(2)} USDC</span>
                             </div>
                             <div className="pt-1.5 mt-1.5 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">

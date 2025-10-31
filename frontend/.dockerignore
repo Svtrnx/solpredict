@@ -3,6 +3,9 @@
 .gitignore
 .vscode
 .idea
+*.md
+README.md
+LICENSE
 
 # Node/Next
 node_modules
@@ -24,5 +27,24 @@ yarn-error.log*
 .pnpm-debug.log*
 .vercel
 
+# Environment files
 .env
 .env.*
+!.env.example
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+__tests__
+__mocks__
+
+# Documentation
+docs/
+*.log

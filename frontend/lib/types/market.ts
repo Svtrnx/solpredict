@@ -171,7 +171,7 @@ export const PrepareClaimResponseSchema = z.object({
 });
 export type PrepareClaimResponse = z.infer<typeof PrepareClaimResponseSchema>;
 
-export const MarketCategorySchema = z.enum(["politics", "war", "finance"])
+export const MarketCategorySchema = z.enum(["politics", "war", "finance", "sports"])
 export type MarketCategory = z.infer<typeof MarketCategorySchema>
 
 export const AiValidateStartReqSchema = z.object({

@@ -8,6 +8,7 @@ import {
   Landmark,
   Swords,
   TrendingUp,
+  Trophy,
 } from "lucide-react"
 import { aiValidateStart, aiValidateResult } from "@/lib/services/market/marketService"
 import { ValidationStatusDisplay } from "./validation-status-display"
@@ -109,6 +110,7 @@ const categories = [
   { value: "politics", label: "Politics", icon: Landmark, color: "blue" },
   { value: "war", label: "War", icon: Swords, color: "red" },
   { value: "finance", label: "Finance", icon: TrendingUp, color: "green" },
+  { value: "sports", label: "Sports", icon: Trophy, color: "yellow" },
 ]
 
 const PLACEHOLDERS = [
@@ -265,7 +267,7 @@ export function AIChat({ onPromptSubmit }: AIChatProps) {
       try {
         const response = await aiValidateStart({
           query: aiInputValue,
-          category: selectedCategory as "politics" | "war" | "finance",
+          category: selectedCategory as "politics" | "war" | "finance" | "sports",
         })
 
         setIsSending(false)

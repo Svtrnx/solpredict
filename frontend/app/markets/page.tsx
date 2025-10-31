@@ -23,6 +23,9 @@ import {
   XCircle,
   Ban,
   ArrowUpRight,
+  Flame,
+  Sparkles,
+  Trophy,
 } from "lucide-react"
 
 import { useScrollPagination } from "@/hooks/use-scroll-pagination"
@@ -52,16 +55,6 @@ export const MarketCardSkeleton = () => (
     </CardHeader>
 
     <CardContent className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-3 w-10 bg-emerald-500/20" />
-          <Skeleton className="h-3 w-10 bg-rose-500/20" />
-        </div>
-        <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
-          <Skeleton className="absolute inset-y-0 left-0 w-1/2 bg-emerald-500/30" />
-          <Skeleton className="absolute inset-y-0 right-0 w-1/2 bg-rose-500/30" />
-        </div>
-      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
@@ -140,7 +133,6 @@ const StatusBadge = ({ status }: { status: string }) => {
       variant="outline"
       className={`${config.className} flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border transition-colors duration-200`}
     >
-      <span className={`${config.dotColor} h-1.5 w-1.5 rounded-full`} />
       <Icon className="h-3.5 w-3.5" />
       {config.label}
     </Badge>
@@ -151,9 +143,6 @@ const MarketCard = ({ market, index }: { market: ListMarket; index: number }) =>
   const timeUntilEnd = new Date(market.endDate).getTime() - Date.now()
   const isLocked = market.status === "awaiting_resolve" && timeUntilEnd < 24 * 60 * 60 * 1000 && timeUntilEnd > 0
   const displayStatus = isLocked ? "locked" : market.status
-
-  const isSettled = market.status.startsWith("settled") || market.status === "void"
-  const probability = Math.round(market.yesPrice * 100)
 
   return (
     <motion.div
@@ -172,7 +161,7 @@ const MarketCard = ({ market, index }: { market: ListMarket; index: number }) =>
             <div className="flex items-start justify-between gap-2 mb-3">
               <Badge
                 variant="secondary"
-                className="bg-white/5 text-gray-300 border-white/10 font-medium text-xs px-2.5 py-1 hover:bg-white/10 transition-colors"
+                className="bg-white/5 text-gray-300 border-white/10 font-medium text-xs px-2.5 py-[3px] hover:bg-white/10 transition-colors"
               >
                 {market.category.charAt(0).toUpperCase() + market.category.slice(1)}
               </Badge>
@@ -197,25 +186,6 @@ const MarketCard = ({ market, index }: { market: ListMarket; index: number }) =>
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {!isSettled && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-emerald-400">{probability}%</span>
-                  <span className="text-rose-400">{100 - probability}%</span>
-                </div>
-                <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full transition-all duration-300"
-                    style={{ width: `${probability}%` }}
-                  />
-                  <div
-                    className="absolute inset-y-0 right-0 bg-rose-500 rounded-full transition-all duration-300"
-                    style={{ width: `${100 - probability}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 hover:bg-emerald-500/10 transition-colors">
                 <div className="text-emerald-400/70 text-[10px] font-bold mb-0.5 tracking-wider uppercase">Yes</div>
@@ -261,19 +231,35 @@ function formatVolume(num: number): string {
   }).format(num)
 }
 
-const categories = ["All", "crypto"]
+const categories = [
+  { value: "All", label: "All", icon: Sparkles },
+  { value: "crypto", label: "Crypto", icon: TrendingUp },
+  { value: "politics", label: "Politics", icon: Users },
+  { value: "war", label: "War", icon: Flame },
+  { value: "finance", label: "Finance", icon: DollarSign },
+  { value: "sports", label: "Sports", icon: Trophy },
+]
 
 export default function MarketsPage() {
   const mountedRef = useRef(true)
 
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [sortBy, setSortBy] = useState<SortKey>("volume")
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["active", "awaiting_resolve"])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, refetch } = useMarketsQuery({
     category: selectedCategory,
-    q: searchTerm,
+    q: debouncedSearchTerm,
     sort: sortBy,
     pageSize: 15,
     status: selectedStatuses,
@@ -288,9 +274,19 @@ export default function MarketsPage() {
 
   useEffect(() => {
     refetch()
-  }, [selectedCategory, searchTerm, sortBy, selectedStatuses, refetch])
+  }, [selectedCategory, debouncedSearchTerm, sortBy, selectedStatuses, refetch])
 
-  const markets = useMemo(() => (data ? data.pages.flatMap((p) => p.items) : []), [data])
+  const allMarkets = useMemo(() => (data ? data.pages.flatMap((p) => p.items) : []), [data])
+
+  const markets = useMemo(() => {
+    if (!searchTerm.trim()) return allMarkets
+
+    const searchLower = searchTerm.toLowerCase()
+    return allMarkets.filter((market) =>
+      market.title.toLowerCase().includes(searchLower) ||
+      market.category.toLowerCase().includes(searchLower)
+    )
+  }, [allMarkets, searchTerm])
 
   useEffect(() => {
     mountedRef.current = true
@@ -300,61 +296,57 @@ export default function MarketsPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      <div className="floating-orb"></div>
-      <div className="floating-orb"></div>
+    <div className="min-h-screen bg-background">
       <div className="floating-orb"></div>
       <div className="floating-orb"></div>
       <div className="floating-orb"></div>
 
       <div className="absolute inset-0 radial-glow"></div>
-      <div className="neon-grid"></div>
-      <div className="neon-globe"></div>
 
-      <div className="relative z-10 pt-24 pb-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">Prediction Markets</h1>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Discover and trade based on predictions. Make forecasts on everything from crypto prices to currency
-              exchange rates and more.
-            </p>
-          </div>
-
-          <div className="bg-black/20 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-8">
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+      <div className="relative z-10">
+        <div className="max-w-7xl mx-auto px-4 pt-24 pb-8">
+          <div className="mb-8">
+            <div className="flex items-center gap-3 bg-black/20 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-4">
+              <div className="relative w-72">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 h-4 w-4" />
                 <Input
                   placeholder="Search markets..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-white/5 border-white/10 text-white placeholder-gray-400"
-                  disabled={true}
+                  className="pl-9 bg-white/[0.05] border-white/[0.08] text-white placeholder-gray-500 h-9 text-sm rounded-lg focus:bg-white/[0.08] focus:border-white/[0.15] transition-all"
                 />
               </div>
 
-              <div className="flex gap-4 flex-wrap">
-                <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isLoading}>
-                  <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                {categories.map((category) => {
+                  const Icon = category.icon
+                  const isActive = selectedCategory === category.value
+                  return (
+                    <button
+                      key={category.value}
+                      onClick={() => setSelectedCategory(category.value)}
+                      disabled={isLoading}
+                      className={`cursor-pointer flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                        isActive
+                          ? "bg-white text-black shadow-lg"
+                          : "bg-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.1] border border-white/[0.1]"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{category.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
 
+              <div className="flex items-center gap-2">
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)} disabled={isLoading}>
-                  <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white">
+                  <SelectTrigger className="cursor-pointer w-40 bg-white/[0.05] border-white/[0.08] text-white h-9 text-sm rounded-lg hover:bg-white/[0.08] transition-colors">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="volume">Volume</SelectItem>
-                    <SelectItem value="participants">Participants</SelectItem>
+                    <SelectItem value="volume">Top Volume</SelectItem>
+                    <SelectItem value="participants">Most Traders</SelectItem>
                     <SelectItem value="ending">Ending Soon</SelectItem>
                   </SelectContent>
                 </Select>
@@ -363,10 +355,9 @@ export default function MarketsPage() {
               </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {isLoading
-              ? Array.from({ length: 15 }).map((_, index) => <MarketCardSkeleton key={`skeleton-${index}`} />)
+              ? Array.from({ length: 12 }).map((_, index) => <MarketCardSkeleton key={`skeleton-${index}`} />)
               : markets.map((market, index) => <MarketCard key={`${market.id}`} market={market} index={index} />)}
           </div>
 
@@ -380,17 +371,15 @@ export default function MarketsPage() {
           )}
 
           {!isLoading && markets.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-gray-400 text-lg mb-4">No markets found</div>
-              <p className="text-gray-500">Try adjusting your search or filters</p>
+            <div className="text-center py-16">
+              <div className="text-gray-400 text-lg mb-2">No markets found</div>
+              <p className="text-gray-500 text-sm">Try adjusting your filters</p>
             </div>
           )}
 
           {!isLoading && !hasNextPage && markets.length > 0 && (
             <div className="text-center py-8">
-              <div className="text-gray-500 text-sm">
-                Showing all {markets.length} markets for "{selectedCategory}"
-              </div>
+              <div className="text-gray-500 text-sm">Showing all {markets.length} markets</div>
             </div>
           )}
         </div>

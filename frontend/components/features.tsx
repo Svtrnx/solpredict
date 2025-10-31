@@ -386,7 +386,7 @@ export default function Features() {
                   <h3 className="text-2xl leading-none font-semibold tracking-tight">Resolve Markets & Earn Rewards</h3>
                   <div className="text-md text-muted-foreground flex flex-col gap-2 text-sm">
                     <p className="max-w-[460px]">
-                      Be the resolver — finalize market outcomes using Pyth data and earn 0.05% of the total market pool
+                      Be the resolver — finalize market outcomes using Pyth data and earn 0.1% of the total market pool
                       instantly.
                     </p>
                   </div>

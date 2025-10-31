@@ -6,6 +6,7 @@ pub enum MarketCategory {
     Politics,
     War,
     Finance,
+    Sports,
 }
 
 pub fn trusted_sources(cat: MarketCategory) -> &'static [&'static str] {
@@ -55,6 +56,23 @@ pub fn trusted_sources(cat: MarketCategory) -> &'static [&'static str] {
             "tradingview.com",
             "coindesk.com",
             "cointelegraph.com",
+        ],
+        MarketCategory::Sports => &[
+            "espn.com",
+            "si.com",
+            "bleacherreport.com",
+            "bbc.com/sport",
+            "skysports.com",
+            "theguardian.com/sport",
+            "nytimes.com/section/sports",
+            "reuters.com/sports",
+            "apnews.com/hub/sports",
+            "cbssports.com",
+            "nbcsports.com",
+            "yahoo.com/sports",
+            "sports.yahoo.com",
+            "foxsports.com",
+            "goal.com",
         ],
     }
 }
@@ -114,6 +132,29 @@ pub fn category_rules(cat: MarketCategory) -> &'static str {
         • military actions, wars, conflicts (unless directly tied to market impact)
         • general news without clear financial/market implications
         If the input is primarily politics/military/general-news → output {"accept": false, "reason": "out of category", "proposals": []}.
+        "#
+        }
+        MarketCategory::Sports => {
+            r#"
+        CATEGORY ENFORCEMENT (HARD):
+        - This job runs under category = Sports.
+        - ACCEPT ONLY topics primarily about:
+        • sports games, matches, tournaments, championships
+        • team performance, wins, losses, standings, playoffs
+        • player performance, stats, records, achievements
+        • player transfers, trades, signings, contract extensions
+        • injuries, suspensions, disciplinary actions
+        • coaching changes, managerial decisions
+        • tournament outcomes, qualification, elimination
+        • awards, honors, Hall of Fame inductions
+        • individual sports events (tennis, golf, boxing, UFC, etc.)
+        • Olympic events, World Cup, major championships
+        - REJECT topics that are primarily about:
+        • political statements by athletes (unless directly tied to sports event)
+        • financial aspects not directly related to sports outcomes
+        • off-field personal life without sports impact
+        • entertainment/celebrity news unrelated to sports performance
+        If the input is primarily politics/finance/entertainment → output {"accept": false, "reason": "out of category", "proposals": []}.
         "#
         }
     }

@@ -1,9 +1,8 @@
-cargo-features = ["edition2024"]
-
 [package]
 name = "solpredict"
 version = "0.1.0"
 edition = "2024"
+default-run = "solpredict"
 
 [dependencies]
 tower-http = { version = "0.6.6", features = [
@@ -86,3 +85,19 @@ h2 = { git = "https://github.com/apify/h2.git" }
 [lib]
 name = "solpredict"
 path = "src/lib.rs"
+
+[[bin]]
+name = "solpredict"
+path = "src/main.rs"
+
+[[bin]]
+name = "init_config"
+path = "src/bin/init_config.rs"
+
+[[bin]]
+name = "close_config"
+path = "src/bin/close_config.rs"
+
+[[bin]]
+name = "check_config"
+path = "src/bin/check_config.rs"

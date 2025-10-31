@@ -229,7 +229,9 @@ export default function LandingPage() {
             animate={isHeroInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
             transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
           >
-            A decentralized prediction market where the future has a price — powered by{" "}
+            A decentralized prediction market with{" "}
+            <span className="text-blue-400 font-semibold">AI oracle resolution</span>
+            {" "}— powered by{" "}
             <span className="text-purple-400 font-semibold">
               <TextEffect
                 key={"Solana blockchain"}
@@ -253,9 +255,9 @@ export default function LandingPage() {
               <div className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
               Live on Devnet
             </Badge>
-            <Badge className="bg-purple-600/20 text-purple-400 border-purple-600/30 text-sm px-3 py-1 hover:bg-purple-600/30 transition-colors">
-              <Zap className="w-3 h-3 mr-1" />
-              Solana Powered
+            <Badge className="bg-blue-600/20 text-blue-400 border-blue-600/30 text-sm px-3 py-1 hover:bg-blue-600/30 transition-colors">
+              <Brain className="w-3 h-3 mr-1" />
+              AI Oracle
             </Badge>
             <Badge
               className="text-sm px-3 py-1 transition-colors"
@@ -271,7 +273,7 @@ export default function LandingPage() {
                 e.currentTarget.style.backgroundColor = "#af50f620"
               }}
             >
-              <img src="/pyth.svg" alt="Phantom" className="w-2.7 h-3 mr-1" />
+              <img src="/pyth.svg" alt="Pyth" className="w-2.7 h-3 mr-1" />
               Pyth Oracle
             </Badge>
           </motion.div>
@@ -283,16 +285,16 @@ export default function LandingPage() {
             transition={{ duration: 0.6, delay: 0.6, ease: "easeOut" }}
           >
             <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Brain className="w-4 h-4 text-blue-400" />
+              <span>AI-Powered Resolution</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
               <Shield className="w-4 h-4 text-green-400" />
-              <span>Blockchain Secured</span>
+              <span>Dual Oracle System</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <Zap className="w-4 h-4 text-yellow-400" />
-              <span>Sub-second Transactions</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <Brain className="w-4 h-4 text-purple-400" />
-              <span>User friendly</span>
+              <span>Instant Settlement</span>
             </div>
           </motion.div>
 
@@ -346,7 +348,7 @@ export default function LandingPage() {
             >
               Live Prediction Markets
             </h2>
-            <p className="text-lg text-muted-foreground mb-6">Real-time markets across crypto</p>
+            <p className="text-lg text-muted-foreground mb-6">AI-resolved markets across crypto, politics, and world events</p>
           </motion.div>
 
           {isLoading ? (

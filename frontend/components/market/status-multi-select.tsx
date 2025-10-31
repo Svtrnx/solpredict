@@ -55,7 +55,7 @@ export function StatusMultiSelect({ value, onChange, disabled }: StatusMultiSele
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-48 justify-between bg-white/5 border-white/10 text-white hover:bg-white/10"
+          className="cursor-pointer w-48 justify-between bg-white/5 border-white/10 text-white hover:bg-white/10"
           disabled={disabled}
         >
           {getDisplayText()}
